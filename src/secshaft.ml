@@ -24,21 +24,21 @@ let serve_ssl port callback =
 let safe op arg =
   try_lwt (op arg >> return_unit) with _ -> return_unit
 
-let rec read_write closing cnt buf ic oc =
+let rec read_write closing close cnt buf ic oc =
   if !closing then
-    (safe Lwt_io.close ic >>= fun () ->
-     safe Lwt_io.close oc)
+    close ()
   else
-    Lwt_io.read_into ic buf 0 4096 >>= fun l ->
-    cnt l ;
-    if l > 0 then
-      let s = Bytes.sub buf 0 l in
-      Lwt_io.write oc s >>= fun () ->
-      read_write closing cnt buf ic oc
-    else
-      (closing := true ;
-       safe Lwt_io.close ic >>= fun () ->
-       safe Lwt_io.close oc)
+    try_lwt
+      (Lwt_io.read_into ic buf 0 4096 >>= fun l ->
+       cnt l ;
+       if l > 0 then
+         let s = Bytes.sub buf 0 l in
+         Lwt_io.write oc s >>= fun () ->
+         read_write closing close cnt buf ic oc
+       else
+         (closing := true ;
+          close ()))
+    with _ -> closing := true ; close ()
 
 
 let resolve name port =
@@ -89,27 +89,34 @@ let serve port target targetport =
       let data =
         let version, cipher = epoch_data t in
         let v = Tls.Printer.tls_version_to_string version
-        and c = Sexplib.Sexp.to_string_hum (Tls.Ciphersuite.sexp_of_ciphersuite cipher) (* convert to string, strip off stupid parens *)
+        and c = Sexplib.Sexp.to_string_hum (Tls.Ciphersuite.sexp_of_ciphersuite cipher)
         in
         v ^ ", " ^ c
       in
       log addr ("connection established (" ^ data ^ ")") ;
       let fd = socket PF_INET SOCK_STREAM 0 in
-      connect fd server_sockaddr >>= fun () ->
-      log addr "connection forwarded" ;
+
       let stats = ref ({ read = 0 ; write = 0 }) in
       let closing = ref false in
       let close () =
-        let stats = "read " ^ (string_of_int !stats.read) ^ " bytes, wrote " ^ (string_of_int !stats.write) ^ " bytes" in
-        log addr ("connection closed " ^ stats) ;
         closing := true ;
-        safe Lwt_unix.close fd
+        safe Lwt_unix.close fd >>= fun () ->
+        safe Tls_lwt.Unix.close t
       in
-      let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
-      and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
-      in
-      Lwt.join [ read_write closing (fun x -> !stats.read <- !stats.read + x) (Bytes.create 4096) ic poc ;
-                 read_write closing (fun x -> !stats.write <- !stats.write + x) (Bytes.create 4096) pic oc ])
+
+      (try_lwt
+         (connect fd server_sockaddr >>= fun () ->
+          log addr "connection forwarded" ;
+          let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
+          and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
+          in
+          Lwt.join [
+            read_write closing close (fun x -> !stats.read <- !stats.read + x) (Bytes.create 4096) ic poc ;
+            read_write closing close (fun x -> !stats.write <- !stats.write + x) (Bytes.create 4096) pic oc
+          ])
+       with Unix.Unix_error (e, f, _) -> log addr (Unix.error_message e ^ " while calling " ^ f) ; close ()) >|= fun () ->
+       let stats = "read " ^ (string_of_int !stats.read) ^ " bytes, wrote " ^ (string_of_int !stats.write) ^ " bytes" in
+       log addr ("connection closed " ^ stats))
 
 
 let () =
