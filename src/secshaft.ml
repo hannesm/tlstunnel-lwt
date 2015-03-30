@@ -2,8 +2,9 @@
 open Lwt
 open Lwt_unix
 
-let server_cert = "server.pem"
-let server_key  = "server.key"
+let dir = "/home/hannes/mirage/secshaft/"
+let server_cert = dir ^ "server.pem"
+let server_key  = dir ^ "server.key"
 
 let server_config =
   X509_lwt.private_of_pems ~cert:server_cert ~priv_key:server_key >|= fun cert ->
@@ -107,40 +108,39 @@ let log out addr event =
     lt.Unix.tm_hour lt.Unix.tm_min lt.Unix.tm_sec
     source event
 
-let init () =
+let init out =
   Printexc.register_printer (function
       | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
       | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
       | _ -> None) ;
-
   Lwt.async_exception_hook := (fun exn ->
-    Printf.printf "async error %s\n%!" (Printexc.to_string exn))
+    Printf.fprintf out "async error %s\n%!" (Printexc.to_string exn))
 
 let serve port target targetport =
+  let logchan = Unix.out_channel_of_descr Unix.stdout in
+  init logchan ;
   Tls_lwt.rng_init () >>= fun () ->
   resolve target targetport >>= fun server ->
-
-  let log = log (Unix.out_channel_of_descr Unix.stdin) in
-  serve_ssl port (worker log server)
+  serve_ssl port (worker (log logchan) server)
 
 
 let inetd logfile target targetport =
   (* we get the socket via stdin/stdout! *)
+  let logfd = Unix.openfile logfile Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o644 in
+  let logchan = Unix.out_channel_of_descr logfd in
+  init logchan ;
+  Tls_lwt.rng_init () >>= fun () ->
   let sock = Lwt_unix.stdin in
   let addrinfo = Lwt_unix.getpeername sock in
 
   resolve target targetport >>= fun server ->
-  let logfd = Unix.openfile logfile Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o644 in
-  let log = log (Unix.out_channel_of_descr logfd) in
   server_config >>= fun config ->
   Tls_lwt.Unix.server_of_fd config sock >>= fun t ->
-  worker log server t addrinfo >|= fun () ->
+  worker (log logchan) server t addrinfo >|= fun () ->
   Unix.close logfd
 
 
 let () =
-  Printf.printf "hello\n" ;
-  init () ;
   let port = 4433
   and target = "127.0.0.1"
   and targetport = 8080
