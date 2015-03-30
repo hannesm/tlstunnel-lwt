@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: a6335f0abdb9785cbfbb504cb4ad8b8d)
+# DO NOT EDIT (digest: 3ee3970fb3e3a52a2d7a47ff42168afb)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -18,11 +18,13 @@ true: annot, bin_annot
 "src/secshaft.native": pkg_cmdliner
 "src/secshaft.native": pkg_lwt
 "src/secshaft.native": pkg_lwt.syntax
+"src/secshaft.native": pkg_sexplib
 "src/secshaft.native": pkg_tls
 "src/secshaft.native": pkg_tls.lwt
 <src/*.ml{,i,y}>: pkg_cmdliner
 <src/*.ml{,i,y}>: pkg_lwt
 <src/*.ml{,i,y}>: pkg_lwt.syntax
+<src/*.ml{,i,y}>: pkg_sexplib
 <src/*.ml{,i,y}>: pkg_tls
 <src/*.ml{,i,y}>: pkg_tls.lwt
 # OASIS_STOP

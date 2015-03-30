@@ -1,0 +1,27 @@
+opam-version: "1.2"
+name:         "secshaft"
+version:      "0.1.0"
+homepage:     "https://github.com/hannesm/secshaft"
+dev-repo:     "https://github.com/hannesm/secshaft.git"
+bug-reports:  "https://github.com/hannesm/secshaft/issues"
+author:       ["Hannes Mehnert <hannes@mehnert.org>"]
+maintainer:   ["Hannes Mehnert <hannes@mehnert.org>"]
+license:      "BSD2"
+
+build: [
+  ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
+  ["ocaml" "setup.ml" "-build"]
+]
+install: ["ocaml" "setup.ml" "-install"]
+remove: [
+  ["rm" "-f" "%{bin}%/secshaft"]
+]
+depends: [
+  "ocamlfind"
+  "tls" {>= "0.4.0"}
+  "x509" {>= "0.3.0"}
+  "lwt"
+  "type_conv"
+  "sexplib"
+  "cmdliner"
+]
