@@ -16,4 +16,4 @@ Executable "secshaft"
   Install         : true
   CompiledObject  : native
   MainIs          : secshaft.ml
-  BuildDepends    : tls, lwt, tls.lwt, cmdliner
+  BuildDepends    : tls, lwt, lwt.syntax, tls.lwt, cmdliner
