@@ -1,0 +1,19 @@
+OASISFormat: 0.4
+Name:        secshaft
+Version:     0.1.0
+Synopsis:    Secure tunnel
+Authors:     Hannes Mehnert <hannes@mehnert.org>
+Maintainers: Hannes Mehnert <hannes@mehnert.org>
+Homepage:    https://github.com/hannesm/secshaft
+License:     FreeBSD
+Plugins:     META (0.4), DevFiles (0.4)
+BuildTools:  ocamlbuild
+Description:
+  Secure tunnel
+
+Executable "secshaft"
+  Path            : src/
+  Install         : true
+  CompiledObject  : native
+  MainIs          : secshaft.ml
+  BuildDepends    : tls, lwt, tls.lwt, cmdliner
