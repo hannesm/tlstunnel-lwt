@@ -160,7 +160,7 @@ let dest =
 
 let listenport =
   Arg.(required & pos 1 (some int) None & info [] ~docv:"listening_port"
-         ~doc:"listening port of tlstunnel")
+         ~doc:"port to listen on for incoming connections")
 
 let certificate =
   Arg.(required & pos 2 (some string) None & info [] ~docv:"certificate_chain"
@@ -171,14 +171,18 @@ let privkey =
          ~doc:"path to PEM encoded unencrypted private key")
 
 let log =
-  Arg.(value & opt (some string) None & info ["l"; "logfile"]
+  Arg.(value & opt (some string) None & info ["l"; "logfile"] ~docv:"FILE"
          ~doc:"logfile")
 
 let cmd =
   let doc = "proxy TLS connections to a standard TCP service" in
   let man = [
     `S "DESCRIPTION" ;
-    `P "$(tname) listens on a given port and forwards request to the specified hostname" ]
+    `P "$(tname) listens on a given port and forwards request to the specified hostname" ;
+    `S "BUGS" ;
+    `P "Please report bugs on the issue tracker at <https://github.com/hannesm/tlstunnel/issues>" ;
+    `S "SEE ALSO" ;
+    `P "$(b,stunnel)(8)" ]
   in
   Term.(pure run_server $ dest $ listenport $ certificate $ privkey $ log),
   Term.info "tlstunnel" ~version:"0.1.0" ~doc ~man
