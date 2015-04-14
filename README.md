@@ -1,6 +1,3 @@
-Who needs a stunnel if you find a secure shaft?
-
-in `inetd.conf`:
-`telnets stream  tcp     nowait  root    /home/hannes/mirage/secshaft/secshaft.native    secshaft`
+Who needs a stunnel if you have a tls tunnel?
 
 yeah, pre-alpha without configuration and hardcoded paths...

@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 3ee3970fb3e3a52a2d7a47ff42168afb)
+# DO NOT EDIT (digest: 86e5e276cbc20bf7b7fa9872a714bd07)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -14,13 +14,13 @@ true: annot, bin_annot
 ".git": not_hygienic
 "_darcs": -traverse
 "_darcs": not_hygienic
-# Executable secshaft
-"src/secshaft.native": pkg_cmdliner
-"src/secshaft.native": pkg_lwt
-"src/secshaft.native": pkg_lwt.syntax
-"src/secshaft.native": pkg_sexplib
-"src/secshaft.native": pkg_tls
-"src/secshaft.native": pkg_tls.lwt
+# Executable tlstunnel
+"src/tlstunnel.native": pkg_cmdliner
+"src/tlstunnel.native": pkg_lwt
+"src/tlstunnel.native": pkg_lwt.syntax
+"src/tlstunnel.native": pkg_sexplib
+"src/tlstunnel.native": pkg_tls
+"src/tlstunnel.native": pkg_tls.lwt
 <src/*.ml{,i,y}>: pkg_cmdliner
 <src/*.ml{,i,y}>: pkg_lwt
 <src/*.ml{,i,y}>: pkg_lwt.syntax
