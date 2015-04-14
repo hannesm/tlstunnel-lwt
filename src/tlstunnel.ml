@@ -136,7 +136,7 @@ let inetd logfile target targetport =
   Unix.close logfd
 *)
 
-let run_server dest dport lport certificate privkey log =
+let run_server (dest, dport) lport certificate privkey log =
   let logfd = match log with
     | None -> Unix.stdout
     | Some x -> Unix.openfile x Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o644
@@ -145,24 +145,29 @@ let run_server dest dport lport certificate privkey log =
 
 open Cmdliner
 
-let destination =
-  Arg.(required & pos 0 (some string) None & info [] ~docv:"destination"
-         ~doc:"destination, the hostname of the actual service (e.g. 127.0.0.1)")
-
-let destport =
-  Arg.(required & pos 1 (some int) None & info [] ~docv:"destination_port"
-         ~doc:"destination port of the actual service")
+let dest =
+  let host_port : (string * int) Arg.converter =
+    let parse s =
+      try
+        let colon = String.index s ':' in
+        let csucc = succ colon in
+        `Ok (String.sub s 0 colon, int_of_string String.(sub s csucc (length s - csucc)))
+      with _ -> `Error "unable to parse hostname and port" in
+    parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" h p
+  in
+  Arg.(required & pos 0 (some host_port) None & info [] ~docv:"destination"
+         ~doc:"hostname and port of the actual service (e.g. 127.0.0.1:8080)")
 
 let listenport =
-  Arg.(required & pos 2 (some int) None & info [] ~docv:"listening_port"
+  Arg.(required & pos 1 (some int) None & info [] ~docv:"listening_port"
          ~doc:"listening port of tlstunnel")
 
 let certificate =
-  Arg.(required & pos 3 (some string) None & info [] ~docv:"certificate_chain"
+  Arg.(required & pos 2 (some string) None & info [] ~docv:"certificate_chain"
          ~doc:"path to PEM encoded certificate chain")
 
 let privkey =
-  Arg.(required & pos 4 (some string) None & info [] ~docv:"private_key"
+  Arg.(required & pos 3 (some string) None & info [] ~docv:"private_key"
          ~doc:"path to PEM encoded unencrypted private key")
 
 let log =
@@ -175,7 +180,7 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) listens on a given port and forwards request to the specified hostname" ]
   in
-  Term.(pure run_server $ destination $ destport $ listenport $ certificate $ privkey $ log),
+  Term.(pure run_server $ dest $ listenport $ certificate $ privkey $ log),
   Term.info "tlstunnel" ~version:"0.1.0" ~doc ~man
 
 let () =
