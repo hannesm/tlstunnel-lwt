@@ -2,16 +2,12 @@
 open Lwt
 open Lwt_unix
 
-let dir = "/home/hannes/mirage/secshaft/"
-let server_cert = dir ^ "server.pem"
-let server_key  = dir ^ "server.key"
-
-let server_config =
-  X509_lwt.private_of_pems ~cert:server_cert ~priv_key:server_key >|= fun cert ->
+let server_config cert priv_key =
+  X509_lwt.private_of_pems ~cert ~priv_key >|= fun cert ->
   Tls.Config.server ~certificates:(`Single cert) ()
 
-let serve_ssl port callback =
-  server_config >>= fun config ->
+let serve_ssl port cert key callback =
+  server_config cert key >>= fun config ->
 
   let s = socket PF_INET SOCK_STREAM 0 in
   setsockopt s SO_REUSEADDR true ;
@@ -116,14 +112,14 @@ let init out =
   Lwt.async_exception_hook := (fun exn ->
     Printf.fprintf out "async error %s\n%!" (Printexc.to_string exn))
 
-let serve port target targetport =
-  let logchan = Unix.out_channel_of_descr Unix.stdout in
+let serve port target targetport certificate privkey logfd =
+  let logchan = Unix.out_channel_of_descr logfd in
   init logchan ;
   Tls_lwt.rng_init () >>= fun () ->
   resolve target targetport >>= fun server ->
-  serve_ssl port (worker (log logchan) server)
+  serve_ssl port certificate privkey (worker (log logchan) server)
 
-
+(*
 let inetd logfile target targetport =
   (* we get the socket via stdin/stdout! *)
   let logfd = Unix.openfile logfile Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o644 in
@@ -138,12 +134,50 @@ let inetd logfile target targetport =
   Tls_lwt.Unix.server_of_fd config sock >>= fun t ->
   worker (log logchan) server t addrinfo >|= fun () ->
   Unix.close logfd
+*)
 
+let run_server dest dport lport certificate privkey log =
+  let logfd = match log with
+    | None -> Unix.stdout
+    | Some x -> Unix.openfile x Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o644
+  in
+  Lwt_main.run (serve lport dest dport certificate privkey logfd)
+
+open Cmdliner
+
+let destination =
+  Arg.(required & pos 0 (some string) None & info [] ~docv:"destination"
+         ~doc:"destination, the hostname of the actual service (e.g. 127.0.0.1)")
+
+let destport =
+  Arg.(required & pos 1 (some int) None & info [] ~docv:"destination_port"
+         ~doc:"destination port of the actual service")
+
+let listenport =
+  Arg.(required & pos 2 (some int) None & info [] ~docv:"listening_port"
+         ~doc:"listening port of tlstunnel")
+
+let certificate =
+  Arg.(required & pos 3 (some string) None & info [] ~docv:"certificate_chain"
+         ~doc:"path to PEM encoded certificate chain")
+
+let privkey =
+  Arg.(required & pos 4 (some string) None & info [] ~docv:"private_key"
+         ~doc:"path to PEM encoded unencrypted private key")
+
+let log =
+  Arg.(value & opt (some string) None & info ["l"; "logfile"]
+         ~doc:"logfile")
+
+let cmd =
+  let doc = "proxy TLS connections to a standard TCP service" in
+  let man = [
+    `S "DESCRIPTION" ;
+    `P "$(tname) listens on a given port and forwards request to the specified hostname" ]
+  in
+  Term.(pure run_server $ destination $ destport $ listenport $ certificate $ privkey $ log),
+  Term.info "tlstunnel" ~version:"0.1.0" ~doc ~man
 
 let () =
-  let port = 4433
-  and target = "127.0.0.1"
-  and targetport = 8080
-  in
-  (*  Lwt_main.run (serve port target targetport) *)
-  Lwt_main.run (inetd "/home/hannes/foo.txt" target targetport)
+  match Term.eval cmd
+  with `Error _ -> exit 1 | _ -> exit 0
