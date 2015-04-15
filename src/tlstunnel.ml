@@ -129,23 +129,6 @@ let serve port target targetport certificate privkey logfd =
   server_config certificate privkey >>= fun config ->
   serve_tcp port (worker config (log logchan) server)
 
-(*
-let inetd logfile target targetport =
-  (* we get the socket via stdin/stdout! *)
-  let logfd = Unix.openfile logfile Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o644 in
-  let logchan = Unix.out_channel_of_descr logfd in
-  init logchan ;
-  Tls_lwt.rng_init () >>= fun () ->
-  let sock = Lwt_unix.stdin in
-  let addrinfo = Lwt_unix.getpeername sock in
-
-  resolve target targetport >>= fun server ->
-  server_config >>= fun config ->
-  Tls_lwt.Unix.server_of_fd config sock >>= fun t ->
-  worker (log logchan) server t addrinfo >|= fun () ->
-  Unix.close logfd
-*)
-
 let run_server (dest, dport) lport certificate privkey log quiet =
   let logfd = match quiet, log with
     | true, None -> None
