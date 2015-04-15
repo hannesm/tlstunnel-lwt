@@ -94,26 +94,36 @@ let worker log server t addr =
    log addr ("connection closed " ^ stats)
 
 let log out addr event =
-  let lt = Unix.localtime (Unix.time ()) in
-  let source =
-    match addr with
-    | ADDR_INET (x, p) -> Unix.string_of_inet_addr x ^ ":" ^ string_of_int p
-    | ADDR_UNIX s -> s
-  in
-  Printf.fprintf out "[%02d:%02d:%02d] %s: %s\n%!"
-    lt.Unix.tm_hour lt.Unix.tm_min lt.Unix.tm_sec
-    source event
+  match out with
+  | None -> ()
+  | Some out ->
+    let lt = Unix.localtime (Unix.time ()) in
+    let source =
+      match addr with
+      | ADDR_INET (x, p) -> Unix.string_of_inet_addr x ^ ":" ^ string_of_int p
+      | ADDR_UNIX s -> s
+    in
+    Printf.fprintf out "[%02d:%02d:%02d] %s: %s\n%!"
+      lt.Unix.tm_hour lt.Unix.tm_min lt.Unix.tm_sec
+      source event
 
 let init out =
   Printexc.register_printer (function
       | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
       | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
       | _ -> None) ;
+  let out = match out with
+    | None -> Unix.out_channel_of_descr Unix.stdout
+    | Some x -> x
+  in
   Lwt.async_exception_hook := (fun exn ->
     Printf.fprintf out "async error %s\n%!" (Printexc.to_string exn))
 
 let serve port target targetport certificate privkey logfd =
-  let logchan = Unix.out_channel_of_descr logfd in
+  let logchan = match logfd with
+    | Some fd -> Some (Unix.out_channel_of_descr fd)
+    | None -> None
+  in
   init logchan ;
   Tls_lwt.rng_init () >>= fun () ->
   resolve target targetport >>= fun server ->
@@ -136,10 +146,12 @@ let inetd logfile target targetport =
   Unix.close logfd
 *)
 
-let run_server (dest, dport) lport certificate privkey log =
-  let logfd = match log with
-    | None -> Unix.stdout
-    | Some x -> Unix.openfile x Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o644
+let run_server (dest, dport) lport certificate privkey log quiet =
+  let logfd = match quiet, log with
+    | true, None -> None
+    | false, None -> Some Unix.stdout
+    | false, Some x -> Some (Unix.openfile x Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o640)
+    | true, Some _ -> invalid_arg "cannot specify logfile and quiet"
   in
   Lwt_main.run (serve lport dest dport certificate privkey logfd)
 
@@ -172,7 +184,11 @@ let privkey =
 
 let log =
   Arg.(value & opt (some string) None & info ["l"; "logfile"] ~docv:"FILE"
-         ~doc:"logfile")
+         ~doc:"Write accesses to FILE (by default, logging is done to standard output).")
+
+let quiet =
+  Arg.(value & flag & info ["q"; "quiet"]
+         ~doc:"Be quiet, no logging of accesses.")
 
 let cmd =
   let doc = "proxy TLS connections to a standard TCP service" in
@@ -184,7 +200,7 @@ let cmd =
     `S "SEE ALSO" ;
     `P "$(b,stunnel)(8)" ]
   in
-  Term.(pure run_server $ dest $ listenport $ certificate $ privkey $ log),
+  Term.(pure run_server $ dest $ listenport $ certificate $ privkey $ log $ quiet),
   Term.info "tlstunnel" ~version:"0.1.0" ~doc ~man
 
 let () =
