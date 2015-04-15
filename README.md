@@ -1,5 +1,10 @@
 Who needs a stunnel if you have a tls tunnel?
 
+`tlstunnel` is picky; it won't accept connections:
+- which do not contain the [secure renegotiation](https://tools.ietf.org/html/rfc5746) extension
+- which speak SSL version 3
+- if the given certificate chain is not valid (or contains an X.509 version 1 certificate, or less than 1024 bits RSA public key
+
 ## Installation
 
 You first need [OCaml](http://ocaml.org) (at least 4.2.0) and
