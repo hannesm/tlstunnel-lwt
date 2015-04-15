@@ -52,7 +52,12 @@ let epoch_data t =
   | `Error -> assert false
 
 let worker config backend log s addr =
-  Tls_lwt.Unix.server_of_fd config s >>= fun t ->
+  (try_lwt
+     Tls_lwt.Unix.server_of_fd config s
+   with Tls_lwt.Tls_alert _ | Tls_lwt.Tls_failure _ as exn ->
+     log ("failed to establish TLS connection: " ^ Printexc.to_string exn);
+     raise exn) >>= fun t ->
+
   let ic, oc = Tls_lwt.of_t t in
   let data =
     let version, cipher = epoch_data t in
@@ -131,8 +136,10 @@ let init out =
     | None -> Unix.out_channel_of_descr Unix.stdout
     | Some x -> x
   in
-  Lwt.async_exception_hook := (fun exn ->
-    Printf.fprintf out "async error %s\n%!" (Printexc.to_string exn))
+  Lwt.async_exception_hook := (function
+      | Tls_lwt.Tls_alert _
+      | Tls_lwt.Tls_failure _ -> ()
+      | exn -> Printf.fprintf out "async error %s\n%!" (Printexc.to_string exn))
 
 let serve (fip, fport) (bip, bport) certificate privkey logfd =
   let logchan = match logfd with
