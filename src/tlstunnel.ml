@@ -6,17 +6,15 @@ let server_config cert priv_key =
   X509_lwt.private_of_pems ~cert ~priv_key >|= fun cert ->
   Tls.Config.server ~certificates:(`Single cert) ()
 
-let serve_ssl port cert key callback =
-  server_config cert key >>= fun config ->
-
+let serve_tcp port callback =
   let s = socket PF_INET SOCK_STREAM 0 in
   setsockopt s SO_REUSEADDR true ;
   bind s (ADDR_INET (Unix.inet_addr_any, port)) ;
   listen s 10 ;
 
   let rec loop () =
-    Tls_lwt.Unix.accept config s >>= fun (t, addr) ->
-    Lwt.async (fun () -> callback t addr) ;
+    Lwt_unix.accept s >>= fun (s, addr) ->
+    Lwt.async (fun () -> callback s addr) ;
     loop ()
   in
   loop ()
@@ -59,7 +57,8 @@ let epoch_data t =
   | `Ok data -> (data.Tls.Engine.protocol_version, data.Tls.Engine.ciphersuite)
   | `Error -> assert false
 
-let worker log server t addr =
+let worker config log server s addr =
+  Tls_lwt.Unix.server_of_fd config s >>= fun t ->
   let ic, oc = Tls_lwt.of_t t in
   let data =
     let version, cipher = epoch_data t in
@@ -127,7 +126,8 @@ let serve port target targetport certificate privkey logfd =
   init logchan ;
   Tls_lwt.rng_init () >>= fun () ->
   resolve target targetport >>= fun server ->
-  serve_ssl port certificate privkey (worker (log logchan) server)
+  server_config certificate privkey >>= fun config ->
+  serve_tcp port (worker config (log logchan) server)
 
 (*
 let inetd logfile target targetport =
