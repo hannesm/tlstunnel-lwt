@@ -6,10 +6,10 @@ let server_config cert priv_key =
   X509_lwt.private_of_pems ~cert ~priv_key >|= fun cert ->
   Tls.Config.server ~certificates:(`Single cert) ()
 
-let serve_tcp port callback =
+let serve_tcp (lip, lport) callback =
   let s = socket PF_INET SOCK_STREAM 0 in
   setsockopt s SO_REUSEADDR true ;
-  bind s (ADDR_INET (Unix.inet_addr_any, port)) ;
+  bind s (ADDR_INET (lip, lport)) ;
   listen s 10 ;
 
   let rec loop () =
@@ -39,14 +39,6 @@ let rec read_write closing close cnt buf ic oc =
     with _ -> closing := true ; close ()
 
 
-let resolve name port =
-  gethostbyname name >|= fun he ->
-  if Array.length he.h_addr_list > 0 then
-    ADDR_INET (he.h_addr_list.(0), port)
-  else
-    let msg = "no address for " ^ name in
-    invalid_arg msg
-
 type stats = {
   mutable read : int ;
   mutable write : int
@@ -57,7 +49,7 @@ let epoch_data t =
   | `Ok data -> (data.Tls.Engine.protocol_version, data.Tls.Engine.ciphersuite)
   | `Error -> assert false
 
-let worker config log server s addr =
+let worker config log (bip, bport) s addr =
   Tls_lwt.Unix.server_of_fd config s >>= fun t ->
   let ic, oc = Tls_lwt.of_t t in
   let data =
@@ -79,7 +71,8 @@ let worker config log server s addr =
   in
 
   (try_lwt
-     (connect fd server >>= fun () ->
+     (let backend = ADDR_INET (bip, bport) in
+      connect fd backend >>= fun () ->
       log addr "connection forwarded" ;
       let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
       and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
@@ -118,51 +111,76 @@ let init out =
   Lwt.async_exception_hook := (fun exn ->
     Printf.fprintf out "async error %s\n%!" (Printexc.to_string exn))
 
-let serve port target targetport certificate privkey logfd =
+let serve frontend backend certificate privkey logfd =
   let logchan = match logfd with
     | Some fd -> Some (Unix.out_channel_of_descr fd)
     | None -> None
   in
   init logchan ;
   Tls_lwt.rng_init () >>= fun () ->
-  resolve target targetport >>= fun server ->
   server_config certificate privkey >>= fun config ->
-  serve_tcp port (worker config (log logchan) server)
+  serve_tcp frontend (worker config (log logchan) backend)
 
-let run_server (dest, dport) lport certificate privkey log quiet =
+let run_server frontend backend certificate privkey log quiet =
   let logfd = match quiet, log with
     | true, None -> None
     | false, None -> Some Unix.stdout
     | false, Some x -> Some (Unix.openfile x Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o640)
     | true, Some _ -> invalid_arg "cannot specify logfile and quiet"
   in
-  Lwt_main.run (serve lport dest dport certificate privkey logfd)
+  Lwt_main.run (serve frontend backend certificate privkey logfd)
 
 open Cmdliner
 
-let dest =
-  let host_port : (string * int) Arg.converter =
-    let parse s =
+let resolve name =
+  let he = Unix.gethostbyname name in
+  if Array.length he.h_addr_list > 0 then
+    he.h_addr_list.(0)
+  else
+    let msg = "no address for " ^ name in
+    invalid_arg msg
+
+let host_port default : (Unix.inet_addr * int) Arg.converter =
+  let parse s =
+    let host, port =
       try
         let colon = String.index s ':' in
+        let hostname =
+          if colon > 1 then
+            resolve (String.sub s 0 colon)
+          else
+            default
+        in
         let csucc = succ colon in
-        `Ok (String.sub s 0 colon, int_of_string String.(sub s csucc (length s - csucc)))
-      with _ -> `Error "unable to parse hostname and port" in
-    parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" h p
+        (hostname, String.(sub s csucc (length s - csucc)))
+      with
+        Not_found -> (default, s)
+    in
+    let port = int_of_string port in
+    `Ok (host, port)
   in
-  Arg.(required & pos 0 (some host_port) None & info [] ~docv:"destination"
-         ~doc:"hostname and port of the actual service (e.g. 127.0.0.1:8080)")
+  parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" (Unix.string_of_inet_addr h) p
 
-let listenport =
-  Arg.(required & pos 1 (some int) None & info [] ~docv:"listening_port"
-         ~doc:"port to listen on for incoming connections")
+let backend =
+  let default = Unix.inet_addr_loopback in
+  let hp = host_port default in
+  Arg.(value & opt hp (default, 8080) & info ["b" ; "backend"]
+         ~docv:"backend"
+         ~doc:"The hostname and port of the backend [connect] service (default is [127.0.0.1]:8080)")
+
+let frontend =
+  let default = Unix.inet_addr_any in
+  let hp = host_port default in
+  Arg.(value & opt hp (default, 4433) & info ["f" ; "frontend"]
+         ~docv:"frontend"
+         ~doc:"The hostname and port to listen on for incoming connections (default is [*]:4433")
 
 let certificate =
-  Arg.(required & pos 2 (some string) None & info [] ~docv:"certificate_chain"
+  Arg.(required & pos 0 (some string) None & info [] ~docv:"certificate_chain"
          ~doc:"path to PEM encoded certificate chain")
 
 let privkey =
-  Arg.(required & pos 3 (some string) None & info [] ~docv:"private_key"
+  Arg.(required & pos 1 (some string) None & info [] ~docv:"private_key"
          ~doc:"path to PEM encoded unencrypted private key")
 
 let log =
@@ -183,7 +201,7 @@ let cmd =
     `S "SEE ALSO" ;
     `P "$(b,stunnel)(8)" ]
   in
-  Term.(pure run_server $ dest $ listenport $ certificate $ privkey $ log $ quiet),
+  Term.(pure run_server $ frontend $ backend $ certificate $ privkey $ log $ quiet),
   Term.info "tlstunnel" ~version:"0.1.0" ~doc ~man
 
 let () =
