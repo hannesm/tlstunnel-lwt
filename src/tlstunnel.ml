@@ -6,15 +6,17 @@ let server_config cert priv_key =
   X509_lwt.private_of_pems ~cert ~priv_key >|= fun cert ->
   Tls.Config.server ~certificates:(`Single cert) ()
 
-let serve_tcp (lip, lport) callback =
+let serve_tcp log_raw log_conn frontend callback =
   let s = socket PF_INET SOCK_STREAM 0 in
   setsockopt s SO_REUSEADDR true ;
-  bind s (ADDR_INET (lip, lport)) ;
+  bind s frontend ;
   listen s 10 ;
+
+  log_raw "listener started on " frontend ;
 
   let rec loop () =
     Lwt_unix.accept s >>= fun (s, addr) ->
-    Lwt.async (fun () -> callback s addr) ;
+    Lwt.async (fun () -> callback (log_conn addr) s addr) ;
     loop ()
   in
   loop ()
@@ -49,7 +51,7 @@ let epoch_data t =
   | `Ok data -> (data.Tls.Engine.protocol_version, data.Tls.Engine.ciphersuite)
   | `Error -> assert false
 
-let worker config log (bip, bport) s addr =
+let worker config backend log s addr =
   Tls_lwt.Unix.server_of_fd config s >>= fun t ->
   let ic, oc = Tls_lwt.of_t t in
   let data =
@@ -59,7 +61,7 @@ let worker config log (bip, bport) s addr =
     in
     v ^ ", " ^ c
   in
-  log addr ("connection established (" ^ data ^ ")") ;
+  log ("connection established (" ^ data ^ ")") ;
   let fd = socket PF_INET SOCK_STREAM 0 in
 
   let stats = ref ({ read = 0 ; write = 0 }) in
@@ -71,33 +73,54 @@ let worker config log (bip, bport) s addr =
   in
 
   (try_lwt
-     (let backend = ADDR_INET (bip, bport) in
-      connect fd backend >>= fun () ->
-      log addr "connection forwarded" ;
-      let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
+     connect fd backend
+   with Unix.Unix_error (e, f, _) ->
+     log ("backend refused connection: " ^  Unix.error_message e ^ " while calling " ^ f) ;
+     close ()) >|= fun () ->
+
+  (try_lwt
+     (let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
       and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
       in
       Lwt.join [
         read_write closing close (fun x -> !stats.read <- !stats.read + x) (Bytes.create 4096) ic poc ;
         read_write closing close (fun x -> !stats.write <- !stats.write + x) (Bytes.create 4096) pic oc
       ])
-   with Unix.Unix_error (e, f, _) -> log addr (Unix.error_message e ^ " while calling " ^ f) ; close ()) >|= fun () ->
-   let stats = "read " ^ (string_of_int !stats.read) ^ " bytes, wrote " ^ (string_of_int !stats.write) ^ " bytes" in
-   log addr ("connection closed " ^ stats)
+   with Unix.Unix_error (e, f, _) ->
+     log (Unix.error_message e ^ " while calling " ^ f) ;
+     close ()) >|= fun () ->
 
-let log out addr event =
-  match out with
-  | None -> ()
-  | Some out ->
-    let lt = Unix.localtime (Unix.time ()) in
-    let source =
-      match addr with
-      | ADDR_INET (x, p) -> Unix.string_of_inet_addr x ^ ":" ^ string_of_int p
-      | ADDR_UNIX s -> s
+  let stats =
+    "read " ^ (string_of_int !stats.read) ^ " bytes, " ^
+    "wrote " ^ (string_of_int !stats.write) ^ " bytes"
+  in
+  log ("connection closed " ^ stats)
+
+module Log = struct
+  let inet_to_string = function
+    | ADDR_INET (x, p) -> Unix.string_of_inet_addr x ^ ":" ^ string_of_int p
+    | ADDR_UNIX s -> s
+
+  let log_raw out event =
+    match out with
+    | None -> ()
+    | Some out ->
+      let lt = Unix.localtime (Unix.time ()) in
+      Printf.fprintf out "[%02d:%02d:%02d] %s\n%!"
+        lt.Unix.tm_hour lt.Unix.tm_min lt.Unix.tm_sec
+        event
+
+  let log out addr event =
+    let source = inet_to_string addr in
+    log_raw out (source ^ ": " ^ event)
+
+  let log_initial out back event front =
+    let listen = inet_to_string front
+    and forward = inet_to_string back
     in
-    Printf.fprintf out "[%02d:%02d:%02d] %s: %s\n%!"
-      lt.Unix.tm_hour lt.Unix.tm_min lt.Unix.tm_sec
-      source event
+    log_raw out (event ^ listen ^ ", forwarding to " ^ forward)
+
+end
 
 let init out =
   Printexc.register_printer (function
@@ -111,15 +134,23 @@ let init out =
   Lwt.async_exception_hook := (fun exn ->
     Printf.fprintf out "async error %s\n%!" (Printexc.to_string exn))
 
-let serve frontend backend certificate privkey logfd =
+let serve (fip, fport) (bip, bport) certificate privkey logfd =
   let logchan = match logfd with
     | Some fd -> Some (Unix.out_channel_of_descr fd)
     | None -> None
   in
   init logchan ;
+  let frontend = ADDR_INET (fip, fport)
+  and backend = ADDR_INET (bip, bport)
+  in
   Tls_lwt.rng_init () >>= fun () ->
+
   server_config certificate privkey >>= fun config ->
-  serve_tcp frontend (worker config (log logchan) backend)
+  serve_tcp
+    (Log.log_initial logchan backend)
+    (Log.log logchan)
+    frontend
+    (worker config backend)
 
 let run_server frontend backend certificate privkey log quiet =
   let logfd = match quiet, log with
@@ -128,7 +159,12 @@ let run_server frontend backend certificate privkey log quiet =
     | false, Some x -> Some (Unix.openfile x Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o640)
     | true, Some _ -> invalid_arg "cannot specify logfile and quiet"
   in
-  Lwt_main.run (serve frontend backend certificate privkey logfd)
+  let c, p = match certificate, privkey with
+    | Some c, Some p -> (c, p)
+    | Some c, None -> (c, c)
+    | None, _ -> invalid_arg "missing certificate file"
+  in
+  Lwt_main.run (serve frontend backend c p logfd)
 
 open Cmdliner
 
@@ -176,12 +212,12 @@ let frontend =
          ~doc:"The hostname and port to listen on for incoming connections (default is [*]:4433")
 
 let certificate =
-  Arg.(required & pos 0 (some string) None & info [] ~docv:"certificate_chain"
-         ~doc:"path to PEM encoded certificate chain")
+  Arg.(value & opt (some string) None & info ["cert"] ~docv:"certificate_chain"
+         ~doc:"The full path to PEM encoded certificate chain")
 
 let privkey =
-  Arg.(required & pos 1 (some string) None & info [] ~docv:"private_key"
-         ~doc:"path to PEM encoded unencrypted private key")
+  Arg.(value & opt (some string) None & info ["key"] ~docv:"private_key"
+         ~doc:"The full path to PEM encoded unencrypted private key (defaults to certificate file)")
 
 let log =
   Arg.(value & opt (some string) None & info ["l"; "logfile"] ~docv:"FILE"
@@ -192,7 +228,7 @@ let quiet =
          ~doc:"Be quiet, no logging of accesses.")
 
 let cmd =
-  let doc = "proxy TLS connections to a standard TCP service" in
+  let doc = "Proxy TLS connections to a standard TCP service" in
   let man = [
     `S "DESCRIPTION" ;
     `P "$(tname) listens on a given port and forwards request to the specified hostname" ;
