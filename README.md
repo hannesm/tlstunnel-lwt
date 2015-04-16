@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/hannesm/tlstunnel.svg?branch=master)](https://travis-ci.org/hannesm/tlstunnel)
+
 Who needs a stunnel if you have a tls tunnel?
 
 `tlstunnel` is picky; it won't accept connections:
