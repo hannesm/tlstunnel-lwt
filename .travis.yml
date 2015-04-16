@@ -3,5 +3,5 @@ install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/ma
 script: bash -ex .travis-opam.sh
 sudo: required
 env:
-  - PACKAGE="tlstunnel" OCAML_VERSION=4.01   POST_INSTALL_HOOK=".travis-test.sh"
-  - PACKAGE="tlstunnel" OCAML_VERSION=latest POST_INSTALL_HOOK=".travis-test.sh"
+  - PACKAGE="tlstunnel" OCAML_VERSION=4.01   POST_INSTALL_HOOK="./.travis-test.sh"
+  - PACKAGE="tlstunnel" OCAML_VERSION=latest POST_INSTALL_HOOK="./.travis-test.sh"
