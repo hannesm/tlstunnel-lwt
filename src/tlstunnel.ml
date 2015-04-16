@@ -242,7 +242,7 @@ let cmd =
     `S "BUGS" ;
     `P "Please report bugs on the issue tracker at <https://github.com/hannesm/tlstunnel/issues>" ;
     `S "SEE ALSO" ;
-    `P "$(b,stunnel)(8)" ]
+    `P "$(b,stunnel)(1), $(b,stud)(1)" ]
   in
   Term.(pure run_server $ frontend $ backend $ certificate $ privkey $ log $ quiet),
   Term.info "tlstunnel" ~version:"0.1.0" ~doc ~man
