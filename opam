@@ -12,12 +12,8 @@ build: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
   ["ocaml" "setup.ml" "-build"]
 ]
-install: ["ocaml" "setup.ml" "-install"]
-remove: [
-  ["rm" "-f" "%{bin}%/tlstunnel"]
-]
 depends: [
-  "ocamlfind"
+  "ocamlfind" {build}
   "tls" {>= "0.4.0"}
   "x509" {>= "0.3.0"}
   "lwt"
