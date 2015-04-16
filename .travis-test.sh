@@ -1,6 +1,6 @@
 #!/bin/sh -x
 
 eval `opam config env`
-tlstunnel --help
+tlstunnel --version
 
 # TODO actually test it
