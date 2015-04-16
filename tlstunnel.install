@@ -1,4 +1,5 @@
 bin: [
+  "_build/src/tlstunnel.byte" {"tlstunnel"}
   "_build/src/tlstunnel.native" {"tlstunnel"}
 ]
 man: [
