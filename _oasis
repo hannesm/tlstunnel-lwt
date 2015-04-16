@@ -7,6 +7,8 @@ Maintainers: Hannes Mehnert <hannes@mehnert.org>
 Homepage:    https://github.com/hannesm/tlstunnel
 License:     FreeBSD
 Plugins:     META (0.4), DevFiles (0.4)
+PostBuildCommand: ./_build/src/tlstunnel.native --help > ./_build/src/tlstunnel.1
+
 BuildTools:  ocamlbuild
 Description:
   Secure tunnel
