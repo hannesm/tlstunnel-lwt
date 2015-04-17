@@ -16,6 +16,7 @@ let serve_tcp log_raw log_conn frontend callback =
 
   let rec loop () =
     Lwt_unix.accept s >>= fun (s, addr) ->
+    (* log_conn addr "accepted incoming connection" ; *)
     Lwt.async (fun () -> callback (log_conn addr) s addr) ;
     loop ()
   in
@@ -73,8 +74,10 @@ let worker config backend log s addr =
   let closing = ref false in
   let close () =
     closing := true ;
-    safe Lwt_unix.close fd >>= fun () ->
-    safe Tls_lwt.Unix.close t
+    Lwt.join [
+      safe Lwt_unix.close fd ;
+      safe Lwt_unix.close s
+    ]
   in
 
   (try_lwt
