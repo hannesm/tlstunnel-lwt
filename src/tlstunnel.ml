@@ -160,6 +160,7 @@ let serve (fip, fport) (bip, bport) certificate privkey logfd =
     (worker config backend)
 
 let run_server frontend backend certificate privkey log quiet =
+  Sys.(set_signal sigpipe Signal_ignore) ;
   let logfd = match quiet, log with
     | true, None -> None
     | false, None -> Some Unix.stdout
