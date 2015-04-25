@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 36d970ea1950f40d7588b32188de1fcb) *)
+(* DO NOT EDIT (digest: 7eacb8ac10bee69add12bc97f71c7090) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -608,7 +608,7 @@ open Ocamlbuild_plugin;;
 let package_default =
   {
      MyOCamlbuildBase.lib_ocaml = [];
-     lib_c = [("tlstunnel", "src/", [])];
+     lib_c = [];
      flags =
        [
           (["oasis_executable_tlstunnel_byte"; "ocaml"; "link"; "byte"],
