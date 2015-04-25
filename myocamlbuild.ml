@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: eb1e09faba6a2f24b9cef32cf8aa335a) *)
+(* DO NOT EDIT (digest: 36d970ea1950f40d7588b32188de1fcb) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -609,7 +609,18 @@ let package_default =
   {
      MyOCamlbuildBase.lib_ocaml = [];
      lib_c = [("tlstunnel", "src/", [])];
-     flags = [];
+     flags =
+       [
+          (["oasis_executable_tlstunnel_byte"; "ocaml"; "link"; "byte"],
+            [(OASISExpr.EBool true, S [A "-w"; A "A-4-33-40-41-42-43-34-44"])
+            ]);
+          (["oasis_executable_tlstunnel_byte"; "ocaml"; "ocamldep"; "byte"],
+            [(OASISExpr.EBool true, S [A "-w"; A "A-4-33-40-41-42-43-34-44"])
+            ]);
+          (["oasis_executable_tlstunnel_byte"; "ocaml"; "compile"; "byte"],
+            [(OASISExpr.EBool true, S [A "-w"; A "A-4-33-40-41-42-43-34-44"])
+            ])
+       ];
      includes = []
   }
   ;;
@@ -618,6 +629,6 @@ let conf = {MyOCamlbuildFindlib.no_automatic_syntax = false}
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default conf package_default;;
 
-# 622 "myocamlbuild.ml"
+# 633 "myocamlbuild.ml"
 (* OASIS_STOP *)
 Ocamlbuild_plugin.dispatch dispatch_default;;
