@@ -92,48 +92,46 @@ let safe_close closing fds () =
   Lwt.join (List.map safe_close fds)
 
 let worker config backend log s addr () =
-  match_lwt
-    (try_lwt
-       Tls_lwt.Unix.server_of_fd config s >>= fun t -> return (Some t)
-     with Tls_lwt.Tls_alert _ | Tls_lwt.Tls_failure _ as exn ->
-       log ("failed to establish TLS connection: " ^ Printexc.to_string exn);
-       return None)
-  with
-   | None -> return_unit
-   | Some t ->
-     let ic, oc = Tls_lwt.of_t t in
-     log ("connection established (" ^ (tls_info t) ^ ")") ;
-     let stats = Stats.new_stats () in
+  let closing = ref false in
+  let close = safe_close closing in
+  catch (fun () ->
+    Tls_lwt.Unix.server_of_fd config s >>= fun t ->
+    let ic, oc = Tls_lwt.of_t t in
+    log ("connection established (" ^ (tls_info t) ^ ")") ;
+    let stats = Stats.new_stats () in
 
-     let closing = ref false in
-     let fd = socket PF_INET SOCK_STREAM 0 in
-     let close = safe_close closing [ s ; fd ] in
-
-     match_lwt
-       (try_lwt
-          connect fd backend >>= fun () -> return (Some ())
-        with Unix.Unix_error (e, f, _) ->
-          log ("backend refused connection: " ^  Unix.error_message e ^ " while calling " ^ f) ;
-          close () >>= fun () ->
-          return None)
-     with
-       | None -> return_unit
-       | Some () ->
-           match_lwt
-             (try_lwt
-                (let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
-                 and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
-                 in
-                 Lwt.join [
-                   read_write closing close (Stats.inc_read stats) (Bytes.create 4096) ic poc ;
-                   read_write closing close (Stats.inc_written stats) (Bytes.create 4096) pic oc
-                 ] >>= fun () -> return (Some ()))
-              with Unix.Unix_error (e, f, _) ->
-                log (Unix.error_message e ^ " while calling " ^ f) ;
-                close () >>= fun () -> return None)
-           with
-             | None -> return_unit
-             | Some () -> log ("connection closed " ^ (Stats.print_stats stats)); return_unit
+    let fd = socket PF_INET SOCK_STREAM 0 in
+    let close = close [ s ; fd ] in
+    catch (fun () ->
+      connect fd backend >>= fun () ->
+      let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
+      and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
+      in
+      catch (fun () ->
+        Lwt.join [
+          read_write closing close (Stats.inc_read stats) (Bytes.create 4096) ic poc ;
+          read_write closing close (Stats.inc_written stats) (Bytes.create 4096) pic oc
+        ] >|= fun () ->
+        log ("connection closed " ^ (Stats.print_stats stats))
+        )
+        (function
+          | Unix.Unix_error (e, f, _) ->
+            log (Unix.error_message e ^ " while calling " ^ f) ;
+            close ()
+          | exn -> raise exn)
+      )
+      (function
+        | Unix.Unix_error (e, f, _) ->
+          let msg = Unix.error_message e in
+          log ("backend refused connection: " ^  msg ^ " while calling " ^ f) ;
+          close ()
+        | exn -> raise exn)
+    )
+    (function
+      | Tls_lwt.Tls_alert _ | Tls_lwt.Tls_failure _ as exn ->
+        log ("failed to establish TLS connection: " ^ Printexc.to_string exn) ;
+        close [s] ()
+      | exn -> raise exn)
 
 let init out =
   Printexc.register_printer (function
