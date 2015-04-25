@@ -130,7 +130,7 @@ let safe_close closing tls fds () =
    | None -> return_unit) >>= fun () ->
   Lwt.join (List.map safe_close fds)
 
-let worker config backend log s addr logfds () =
+let worker config backend log s logfds () =
   catch (fun () ->
     Tls_lwt.Unix.server_of_fd config s >>= fun t ->
     let ic, oc = Tls_lwt.of_t t in
@@ -179,13 +179,22 @@ let init out =
   Lwt.async_exception_hook := (fun exn ->
       Printf.fprintf out "async error %s\n%!" (Printexc.to_string exn))
 
-let accept_loop s log_conn tls_config backend logfds =
+let accept_loop s log_raw log_conn tls_config backend logfds =
   let rec loop () =
-    Lwt_unix.accept s >>= fun (client_socket, addr) ->
-    (* log_conn addr "accepted incoming connection" ; *)
-    if logfds then Fd_logger.add_fd client_socket ;
-    Lwt.async (worker tls_config backend (log_conn addr) client_socket addr logfds) ;
-    loop ()
+    catch (fun () ->
+      accept s >>= fun (client_socket, addr) ->
+      (* log_conn addr "accepted incoming connection" ; *)
+      if logfds then Fd_logger.add_fd client_socket ;
+      Lwt.async (worker tls_config backend (log_conn addr) client_socket logfds) ;
+      loop ())
+      (function
+        | Unix.Unix_error (e, f, _) ->
+          let msg = Unix.error_message e in
+          log_raw ("accept failed " ^ msg ^ " in " ^ f) ;
+          loop ()
+        | exn ->
+          log_raw ("failure in accept_loop: " ^ Printexc.to_string exn) ;
+          loop ())
   in
   loop ()
 
@@ -201,16 +210,17 @@ let serve (fip, fport) (bip, bport) certificate privkey logfd logfds =
   Tls_lwt.rng_init () >>= fun () ->
   server_config certificate privkey >>= fun tls_config ->
   let server_socket = init_socket (Log.log_initial logchan backend) frontend in
-  if logfds then ignore (Fd_logger.start (Log.log_raw logchan) ()) ;
+  let raw_log = Log.log_raw logchan in
+  if logfds then ignore (Fd_logger.start raw_log ()) ;
   (* drop privileges here! *)
-  accept_loop server_socket (Log.log logchan) tls_config backend logfds
+  accept_loop server_socket raw_log (Log.log logchan) tls_config backend logfds
 
 let run_server frontend backend certificate privkey log quiet logfds =
   Sys.(set_signal sigpipe Signal_ignore) ;
   let logfd = match quiet, log with
     | true, None -> None
     | false, None -> Some Unix.stdout
-    | false, Some x -> Some (Unix.openfile x Unix.([O_WRONLY ; O_APPEND; O_CREAT]) 0o640)
+    | false, Some x -> Some (Unix.openfile x [Unix.O_WRONLY ; Unix.O_APPEND; Unix.O_CREAT] 0o640)
     | true, Some _ -> invalid_arg "cannot specify logfile and quiet"
   in
   let c, p = match certificate, privkey with
