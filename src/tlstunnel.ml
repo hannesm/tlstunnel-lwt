@@ -76,7 +76,7 @@ module Fd_logger = struct
          "")
 
   let start logger () =
-    Lwt_engine.on_timer 3. true (fun _ -> logger (log ()))
+    Lwt_engine.on_timer 60. true (fun _ -> logger (log ()))
 end
 
 let server_config cert priv_key =
