@@ -43,6 +43,39 @@ module Stats = struct
     "wrote " ^ (string_of_int stats.written) ^ " bytes"
 end
 
+module Fd_logger = struct
+  let fds = ref []
+  let count = ref 0
+
+  let add_fd fd =
+    fds := fd :: !fds ;
+    count := succ !count
+
+  let aborted_to_string ab =
+    match state ab with
+      | Aborted exn -> Printexc.to_string exn
+      | _ -> ""
+
+  let log () =
+    let opened, closed, aborted =
+      List.fold_left (fun (o, c, a) x -> match state x with
+          | Opened -> (x :: o, c, a)
+          | Closed -> (o, x :: c, a)
+          | Aborted _ -> (o, c, x :: a))
+        ([], [], []) !fds
+    in
+    fds := List.append opened aborted ;
+    Printf.sprintf "file descriptors: total %d, active in list %d, open %d, closed %d, aborted %d%s"
+      !count (List.length !fds) (List.length opened) (List.length closed) (List.length aborted)
+      (if List.length aborted > 0 then
+         "\n" ^ (String.concat "\n  " (List.map aborted_to_string aborted))
+       else
+         "")
+
+  let start logger () =
+    Lwt_engine.on_timer 60. true (fun _ -> logger (log ()))
+end
+
 let server_config cert priv_key =
   X509_lwt.private_of_pems ~cert ~priv_key >|= fun cert ->
   Tls.Config.server ~certificates:(`Single cert) ()
@@ -60,17 +93,17 @@ let rec read_write closing close cnt buf ic oc =
   if !closing then
     close ()
   else
-    try_lwt
-      (Lwt_io.read_into ic buf 0 4096 >>= fun l ->
-       cnt l ;
-       if l > 0 then
-         let s = Bytes.sub buf 0 l in
-         Lwt_io.write oc s >>= fun () ->
-         read_write closing close cnt buf ic oc
-       else
-         (closing := true ;
-          close ()))
-    with _ -> closing := true ; close ()
+    catch (fun () ->
+        Lwt_io.read_into ic buf 0 4096 >>= fun l ->
+        cnt l ;
+        if l > 0 then
+          let s = Bytes.sub buf 0 l in
+          Lwt_io.write oc s >>= fun () ->
+          read_write closing close cnt buf ic oc
+        else
+          (closing := true ;
+           close ()))
+      (fun _ -> closing := true ; close ())
 
 let tls_info t =
   let v, c =
@@ -86,7 +119,7 @@ let tls_info t =
 let safe_close closing tls fds () =
   closing := true ;
   let safe_close fd =
-    try_lwt (Lwt_unix.close fd >> return_unit)
+    try_lwt (Lwt_unix.close fd)
     with _ -> return_unit
   in
   (match tls with
@@ -94,9 +127,7 @@ let safe_close closing tls fds () =
    | None -> return_unit) >>= fun () ->
   Lwt.join (List.map safe_close fds)
 
-let worker config backend log s addr () =
-  let closing = ref false in
-  let close = safe_close closing in
+let worker config backend log s addr logfds () =
   catch (fun () ->
     Tls_lwt.Unix.server_of_fd config s >>= fun t ->
     let ic, oc = Tls_lwt.of_t t in
@@ -104,24 +135,20 @@ let worker config backend log s addr () =
     let stats = Stats.new_stats () in
 
     let fd = socket PF_INET SOCK_STREAM 0 in
-    let close = close (Some t) [ s ; fd ] in
+    if logfds then Fd_logger.add_fd fd ;
+    let closing = ref false in
+    let close = safe_close closing (Some t) [ s ; fd ] in
+
     catch (fun () ->
       connect fd backend >>= fun () ->
       let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
       and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
       in
-      catch (fun () ->
-        Lwt.join [
-          read_write closing close (Stats.inc_read stats) (Bytes.create 4096) ic poc ;
-          read_write closing close (Stats.inc_written stats) (Bytes.create 4096) pic oc
-        ] >|= fun () ->
-        log ("connection closed " ^ (Stats.print_stats stats))
-        )
-        (function
-          | Unix.Unix_error (e, f, _) ->
-            log (Unix.error_message e ^ " while calling " ^ f) ;
-            close ()
-          | exn -> raise exn)
+      Lwt.join [
+        read_write closing close (Stats.inc_read stats) (Bytes.create 4096) ic poc ;
+        read_write closing close (Stats.inc_written stats) (Bytes.create 4096) pic oc
+      ] >|= fun () ->
+      log ("connection closed " ^ (Stats.print_stats stats))
       )
       (function
         | Unix.Unix_error (e, f, _) ->
@@ -133,7 +160,8 @@ let worker config backend log s addr () =
     (function
       | Tls_lwt.Tls_alert _ | Tls_lwt.Tls_failure _ as exn ->
         log ("failed to establish TLS connection: " ^ Printexc.to_string exn) ;
-        close None [s] ()
+        (* Tls_lwt has already closed the underlying file descriptor *)
+        return_unit
       | exn -> raise exn)
 
 let init out =
@@ -148,16 +176,17 @@ let init out =
   Lwt.async_exception_hook := (fun exn ->
       Printf.fprintf out "async error %s\n%!" (Printexc.to_string exn))
 
-let accept_loop s log_conn tls_config backend =
+let accept_loop s log_conn tls_config backend logfds =
   let rec loop () =
     Lwt_unix.accept s >>= fun (client_socket, addr) ->
     (* log_conn addr "accepted incoming connection" ; *)
-    Lwt.async (worker tls_config backend (log_conn addr) client_socket addr) ;
+    if logfds then Fd_logger.add_fd client_socket ;
+    Lwt.async (worker tls_config backend (log_conn addr) client_socket addr logfds) ;
     loop ()
   in
   loop ()
 
-let serve (fip, fport) (bip, bport) certificate privkey logfd =
+let serve (fip, fport) (bip, bport) certificate privkey logfd logfds =
   let logchan = match logfd with
     | Some fd -> Some (Unix.out_channel_of_descr fd)
     | None -> None
@@ -169,10 +198,11 @@ let serve (fip, fport) (bip, bport) certificate privkey logfd =
   Tls_lwt.rng_init () >>= fun () ->
   server_config certificate privkey >>= fun tls_config ->
   let server_socket = init_socket (Log.log_initial logchan backend) frontend in
+  if logfds then ignore (Fd_logger.start (Log.log_raw logchan) ()) ;
   (* drop privileges here! *)
-  accept_loop server_socket (Log.log logchan) tls_config backend
+  accept_loop server_socket (Log.log logchan) tls_config backend logfds
 
-let run_server frontend backend certificate privkey log quiet =
+let run_server frontend backend certificate privkey log quiet logfds =
   Sys.(set_signal sigpipe Signal_ignore) ;
   let logfd = match quiet, log with
     | true, None -> None
@@ -185,7 +215,7 @@ let run_server frontend backend certificate privkey log quiet =
     | Some c, None -> (c, c)
     | None, _ -> invalid_arg "missing certificate file"
   in
-  Lwt_main.run (serve frontend backend c p logfd)
+  Lwt_main.run (serve frontend backend c p logfd logfds)
 
 open Cmdliner
 
@@ -244,6 +274,9 @@ let log =
   Arg.(value & opt (some string) None & info ["l"; "logfile"] ~docv:"FILE"
          ~doc:"Write accesses to FILE (by default, logging is done to standard output).")
 
+let logfds =
+  Arg.(value & flag & info ["logfds"] ~doc:"Log file descriptors")
+
 let quiet =
   Arg.(value & flag & info ["q"; "quiet"]
          ~doc:"Be quiet, no logging of accesses.")
@@ -258,7 +291,7 @@ let cmd =
     `S "SEE ALSO" ;
     `P "$(b,stunnel)(1), $(b,stud)(1)" ]
   in
-  Term.(pure run_server $ frontend $ backend $ certificate $ privkey $ log $ quiet),
+  Term.(pure run_server $ frontend $ backend $ certificate $ privkey $ log $ quiet $ logfds),
   Term.info "tlstunnel" ~version:"0.1.0" ~doc ~man
 
 let () =
