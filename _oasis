@@ -19,5 +19,4 @@ Executable "tlstunnel"
   CompiledObject  : native
   MainIs          : tlstunnel.ml
   BuildDepends    : tls, lwt, lwt.syntax, tls.lwt, cmdliner, sexplib
-  CSources        : fd.c
   ByteOpt         : -w A-4-33-40-41-42-43-34-44

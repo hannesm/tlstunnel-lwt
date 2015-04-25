@@ -56,8 +56,6 @@ module Fd_logger = struct
       | Aborted exn -> Printexc.to_string exn
       | _ -> ""
 
-  external next_fd : unit -> int = "caml_next_fd"
-
   let log () =
     let opened, closed, aborted =
       List.fold_left (fun (o, c, a) x -> match state x with
@@ -67,9 +65,8 @@ module Fd_logger = struct
         ([], [], []) !fds
     in
     fds := List.append opened aborted ;
-    Printf.sprintf "fds: count %d, next %d, active %d, open %d, closed %d, aborted %d%s"
-      !count (next_fd ()) (List.length !fds)
-      (List.length opened) (List.length closed) (List.length aborted)
+    Printf.sprintf "fds: count %d, active %d, open %d, closed %d, aborted %d%s"
+      !count (List.length !fds) (List.length opened) (List.length closed) (List.length aborted)
       (if List.length aborted > 0 then
          "\n" ^ (String.concat "\n  " (List.map aborted_to_string aborted))
        else
