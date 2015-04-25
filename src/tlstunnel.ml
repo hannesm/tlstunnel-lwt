@@ -83,12 +83,15 @@ let tls_info t =
   in
   version ^ ", " ^ cipher
 
-let safe_close closing fds () =
+let safe_close closing tls fds () =
   closing := true ;
   let safe_close fd =
     try_lwt (Lwt_unix.close fd >> return_unit)
     with _ -> return_unit
   in
+  (match tls with
+   | Some x -> Tls_lwt.Unix.close x
+   | None -> return_unit) >>= fun () ->
   Lwt.join (List.map safe_close fds)
 
 let worker config backend log s addr () =
@@ -101,7 +104,7 @@ let worker config backend log s addr () =
     let stats = Stats.new_stats () in
 
     let fd = socket PF_INET SOCK_STREAM 0 in
-    let close = close [ s ; fd ] in
+    let close = close (Some t) [ s ; fd ] in
     catch (fun () ->
       connect fd backend >>= fun () ->
       let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
@@ -130,7 +133,7 @@ let worker config backend log s addr () =
     (function
       | Tls_lwt.Tls_alert _ | Tls_lwt.Tls_failure _ as exn ->
         log ("failed to establish TLS connection: " ^ Printexc.to_string exn) ;
-        close [s] ()
+        close None [s] ()
       | exn -> raise exn)
 
 let init out =
