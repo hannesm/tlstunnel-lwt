@@ -128,6 +128,7 @@ let safe_close closing tls fds () =
   Lwt.join (List.map safe_close fds)
 
 let worker config backend log s logfds () =
+  let closing = ref false in
   catch (fun () ->
     Tls_lwt.Unix.server_of_fd config s >>= fun t ->
     let ic, oc = Tls_lwt.of_t t in
@@ -136,7 +137,6 @@ let worker config backend log s logfds () =
 
     let fd = socket PF_INET SOCK_STREAM 0 in
     if logfds then Fd_logger.add_fd fd ;
-    let closing = ref false in
     let close = safe_close closing (Some t) [ s ; fd ] in
 
     catch (fun () ->
@@ -155,14 +155,19 @@ let worker config backend log s logfds () =
           let msg = Unix.error_message e in
           log ("backend refused connection: " ^  msg ^ " while calling " ^ f) ;
           close ()
-        | exn -> raise exn)
+        | exn ->
+          close () >|= fun () ->
+          log ("received inner exception " ^ Printexc.to_string exn) ;
+          raise exn)
     )
     (function
       | Tls_lwt.Tls_alert _ | Tls_lwt.Tls_failure _ as exn ->
         log ("failed to establish TLS connection: " ^ Printexc.to_string exn) ;
         (* Tls_lwt has already closed the underlying file descriptor *)
         return_unit
-      | exn -> raise exn)
+      | exn -> safe_close closing None [s] () >|= fun () ->
+        log ("received outer exception " ^ Printexc.to_string exn) ;
+        raise exn)
 
 let init out =
   Printexc.register_printer (function
