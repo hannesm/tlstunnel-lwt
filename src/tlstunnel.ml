@@ -160,10 +160,10 @@ let worker config backend log s logfds () =
           log ("received inner exception " ^ Printexc.to_string exn)))
     (function
       | Tls_lwt.Tls_alert _ | Tls_lwt.Tls_failure _ as exn ->
-        log ("failed to establish TLS connection: " ^ Printexc.to_string exn) ;
-        (* Tls_lwt has already closed the underlying file descriptor *)
-        return_unit
-      | exn -> safe_close closing None [s] () >|= fun () ->
+        safe_close closing None [s] () >|= fun () ->
+        log ("failed to establish TLS connection: " ^ Printexc.to_string exn)
+      | exn ->
+        safe_close closing None [s] () >|= fun () ->
         log ("received outer exception " ^ Printexc.to_string exn))
 
 let init out =
@@ -206,7 +206,7 @@ let serve (fip, fport) (bip, bport) certificate privkey logfd logfds =
   let frontend = ADDR_INET (fip, fport)
   and backend = ADDR_INET (bip, bport)
   in
-  Tls_lwt.rng_init () >>= fun () ->
+  Nocrypto_entropy_lwt.initialize () >>= fun () ->
   server_config certificate privkey >>= fun tls_config ->
   let server_socket = init_socket (Log.log_initial logchan backend) frontend in
   let raw_log = Log.log_raw logchan in
