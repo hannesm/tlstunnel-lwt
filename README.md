@@ -12,9 +12,9 @@ Who needs a stunnel if you have a tls tunnel?
 You first need [OCaml](https://ocaml.org) (at least 4.1.0) and
 [OPAM](https://opam.ocaml.org) (1.2.*) from your distribution.
 
-Then, run `opam repo add mirage-dev git://github.com/mirage/mirage-dev` and `opam pin add tlstunnel
-https://github.com/hannesm/tlstunnel`, which will install `tlstunnel`
-for you.
+Then, run `opam repo add mirage-dev
+git://github.com/mirage/mirage-dev`. Afterwards, install `tlstunnel`
+with `opam install tlstunnel`.
 
 ## Execution
 
