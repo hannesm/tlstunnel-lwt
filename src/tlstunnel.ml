@@ -274,11 +274,11 @@ let frontend =
 
 let certificate =
   Arg.(value & opt (some string) None & info ["cert"] ~docv:"certificate_chain"
-         ~doc:"The full path to PEM encoded certificate chain")
+         ~doc:"The full path to PEM encoded certificate chain (may also include the private key)")
 
 let privkey =
   Arg.(value & opt (some string) None & info ["key"] ~docv:"private_key"
-         ~doc:"The full path to PEM encoded unencrypted private key (defaults to certificate file)")
+         ~doc:"The full path to PEM encoded unencrypted private key (defaults to certificate_chain)")
 
 let log =
   Arg.(value & opt (some string) None & info ["l"; "logfile"] ~docv:"FILE"

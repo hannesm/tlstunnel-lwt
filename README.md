@@ -20,10 +20,10 @@ with `opam install tlstunnel`.
 
 A sample command line is:
 
-`tlstunnel -b 127.0.0.1:8080 -f 4433 -cert server.pem -key server.key`
+`tlstunnel -b 127.0.0.1:8080 -f 4433 -cert server.pem`
 
 which listens on TCP port `4433` with the given certificate chain
-(`server.pem`) and private key (`server.key`), and forwards
+and private key (both in `server.pem`), and forwards
 connections to `127.0.0.1` on port `8080`.
 
 An optional argument is `-l FILE` to log into a file instead of to
