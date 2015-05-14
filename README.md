@@ -12,7 +12,7 @@ Who needs a stunnel if you have a tls tunnel?
 You first need [OCaml](https://ocaml.org) (at least 4.1.0) and
 [OPAM](https://opam.ocaml.org) (1.2.*) from your distribution.
 
-Run `opam pin add tlstunnel git://github.com/hannesm/tlstunnel.git` which will install tlstunnel.
+Run `opam install tlstunnel` after `opam init` finished.
 
 ## Execution
 
