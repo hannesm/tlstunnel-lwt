@@ -156,13 +156,9 @@ let worker config backend log s logfds () =
         | exn ->
           close () >|= fun () ->
           log ("received inner exception " ^ Printexc.to_string exn)))
-    (function
-      | Tls_lwt.Tls_alert _ | Tls_lwt.Tls_failure _ as exn ->
-        safe_close closing None s () >|= fun () ->
-        log ("failed to establish TLS connection: " ^ Printexc.to_string exn)
-      | exn ->
-        safe_close closing None s () >|= fun () ->
-        log ("received outer exception " ^ Printexc.to_string exn))
+    (fun exn ->
+       safe_close closing None s () >|= fun () ->
+       log ("failed to establish TLS connection: " ^ Printexc.to_string exn))
 
 let init out =
   Printexc.register_printer (function
