@@ -269,12 +269,12 @@ let frontend =
          ~doc:"The hostname and port to listen on for incoming connections (default is [*]:4433")
 
 let certificate =
-  Arg.(value & opt (some string) None & info ["cert"] ~docv:"certificate_chain"
-         ~doc:"The full path to PEM encoded certificate chain (may also include the private key)")
+  Arg.(value & opt (some string) None & info ["cert"] ~docv:"FILE"
+         ~doc:"The full path to PEM encoded certificate chain FILE (may also include the private key)")
 
 let privkey =
-  Arg.(value & opt (some string) None & info ["key"] ~docv:"private_key"
-         ~doc:"The full path to PEM encoded unencrypted private key (defaults to certificate_chain)")
+  Arg.(value & opt (some string) None & info ["key"] ~docv:"FILE"
+         ~doc:"The full path to PEM encoded unencrypted private key in FILE (defaults to certificate_chain)")
 
 let log =
   Arg.(value & opt (some string) None & info ["l"; "logfile"] ~docv:"FILE"
