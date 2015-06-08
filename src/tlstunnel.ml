@@ -110,10 +110,12 @@ let rec read_write log closing close cnt ic oc =
         Stop
     in
     catch doit
-      (fun exn ->
-         log ("failed in read_write " ^ Printexc.to_string exn) ;
-         close () >|= fun () ->
-         Stop)
+      (function
+        | Unix.Unix_error (Unix.EBADF, _, _) -> close () >|= fun () -> Stop
+        | exn ->
+          log ("failed in read_write " ^ Printexc.to_string exn) ;
+          close () >|= fun () ->
+          Stop)
     >>= function
     | Stop -> return_unit
     | Continue -> read_write log closing close cnt ic oc
