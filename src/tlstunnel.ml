@@ -89,22 +89,34 @@ let init_socket log_raw frontend =
       log_raw "listener started on " frontend ;
       s) ()
 
-let rec read_write log closing close cnt buf ic oc =
+let bufsize = 4096
+
+type res = Stop | Continue
+
+let rec read_write log closing close cnt ic oc =
   if !closing then
     close ()
   else
-    catch (fun () ->
-        Lwt_io.read_into ic buf 0 4096 >>= fun l ->
-        cnt l ;
-        if l > 0 then
-          let s = Bytes.sub buf 0 l in
-          Lwt_io.write oc s >>= fun () ->
-          read_write log closing close cnt buf ic oc
-        else
-          close ())
+    let doit () =
+      let buf = Bytes.create bufsize in
+      Lwt_io.read_into ic buf 0 bufsize >>= fun l ->
+      cnt l ;
+      if l > 0 then
+        let s = Bytes.sub buf 0 l in
+        Lwt_io.write oc s >|= fun () ->
+        Continue
+      else
+        close () >|= fun () ->
+        Stop
+    in
+    catch doit
       (fun exn ->
          log ("failed in read_write " ^ Printexc.to_string exn) ;
-         close ())
+         close () >|= fun () ->
+         Stop)
+    >>= function
+    | Stop -> return_unit
+    | Continue -> read_write log closing close cnt ic oc
 
 let tls_info t =
   let v, c =
@@ -145,8 +157,8 @@ let worker config backend log s logfds () =
       and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
       in
       Lwt.join [
-        read_write log closing close (Stats.inc_read stats) (Bytes.create 4096) ic poc ;
-        read_write log closing close (Stats.inc_written stats) (Bytes.create 4096) pic oc
+        read_write log closing close (Stats.inc_read stats) ic poc ;
+        read_write log closing close (Stats.inc_written stats) pic oc
       ] >|= fun () ->
       log ("connection closed " ^ (Stats.print_stats stats))
       )
