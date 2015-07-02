@@ -123,7 +123,7 @@ let rec read_write log closing close cnt ic oc =
 let tls_info t =
   let v, c =
     match Tls_lwt.Unix.epoch t with
-    | `Ok data -> (data.Tls.Engine.protocol_version, data.Tls.Engine.ciphersuite)
+    | `Ok data -> (data.Tls.Core.protocol_version, data.Tls.Core.ciphersuite)
     | `Error -> assert false
   in
   let version = Tls.Printer.tls_version_to_string v
