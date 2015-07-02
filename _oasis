@@ -1,6 +1,6 @@
 OASISFormat: 0.4
 Name:        tlstunnel
-Version:     0.1.0
+Version:     0.1.1
 Synopsis:    TLS tunnel
 Authors:     Hannes Mehnert <hannes@mehnert.org>
 Maintainers: Hannes Mehnert <hannes@mehnert.org>
