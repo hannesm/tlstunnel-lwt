@@ -11,9 +11,11 @@ module Log = struct
     match out with
     | None -> ()
     | Some out ->
-      let lt = Unix.localtime (Unix.time ()) in
-      Printf.fprintf out "[%02d:%02d:%02d] %s\n%!"
-        lt.Unix.tm_hour lt.Unix.tm_min lt.Unix.tm_sec
+      let open Unix in
+      let lt = gmtime (time ()) in
+      Printf.fprintf out "[%04d-%02d-%02dT%02d:%02d:%02dZ] %s\n%!"
+        (lt.tm_year + 1900) (succ lt.tm_mon) lt.tm_mday
+        lt.tm_hour lt.tm_min lt.tm_sec
         event
 
   let log out addr event =
