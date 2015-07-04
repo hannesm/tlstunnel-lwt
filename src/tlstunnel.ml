@@ -218,7 +218,6 @@ let serve (fip, fport) (bip, bport) certificate privkey logfd logfds =
   let frontend = ADDR_INET (fip, fport)
   and backend = ADDR_INET (bip, bport)
   in
-  Nocrypto_entropy_lwt.initialize () >>= fun () ->
   server_config certificate privkey >>= fun tls_config ->
   let server_socket = init_socket (Log.log_initial logchan backend) frontend in
   let raw_log = Log.log_raw logchan in

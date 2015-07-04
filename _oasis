@@ -20,7 +20,7 @@ Executable "tlstunnel"
   MainIs          : tlstunnel.ml
   BuildDepends    : tls (>= 0.6.0), lwt, lwt.syntax, tls.lwt,
                     x509 (>= 0.3.0), nocrypto (>= 0.4.0),
-                    cmdliner, sexplib, type_conv
+                    cmdliner, sexplib
   ByteOpt         : -w A-4-33-40-41-42-43-34-44
   DataFiles: ../_build/src/tlstunnel.1 ($mandir)
 
