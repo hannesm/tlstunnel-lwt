@@ -1,36 +1,7 @@
-# OASIS_START
-# DO NOT EDIT (digest: 46a2e4c066832e6fd4be2d8e7a74a791)
-# Ignore VCS directories, you can use the same kind of rule outside
-# OASIS_START/STOP if you want to exclude directories that contains
-# useless stuff for the build process
-true: annot, bin_annot
-<**/.svn>: -traverse
-<**/.svn>: not_hygienic
-".bzr": -traverse
-".bzr": not_hygienic
-".hg": -traverse
-".hg": not_hygienic
-".git": -traverse
-".git": not_hygienic
-"_darcs": -traverse
-"_darcs": not_hygienic
-# Executable tlstunnel
-"src/tlstunnel.native": oasis_executable_tlstunnel_byte
-<src/*.ml{,i,y}>: oasis_executable_tlstunnel_byte
-"src/tlstunnel.native": pkg_cmdliner
-"src/tlstunnel.native": pkg_lwt
-"src/tlstunnel.native": pkg_lwt.syntax
-"src/tlstunnel.native": pkg_nocrypto
-"src/tlstunnel.native": pkg_sexplib
-"src/tlstunnel.native": pkg_tls
-"src/tlstunnel.native": pkg_tls.lwt
-"src/tlstunnel.native": pkg_x509
-<src/*.ml{,i,y}>: pkg_cmdliner
-<src/*.ml{,i,y}>: pkg_lwt
-<src/*.ml{,i,y}>: pkg_lwt.syntax
-<src/*.ml{,i,y}>: pkg_nocrypto
-<src/*.ml{,i,y}>: pkg_sexplib
-<src/*.ml{,i,y}>: pkg_tls
-<src/*.ml{,i,y}>: pkg_tls.lwt
-<src/*.ml{,i,y}>: pkg_x509
-# OASIS_STOP
+true : annot, bin_annot
+true : warn_error(+1..49)
+true : warn(+A-4-6-7-9-40-42-44-48)
+
+<tlstunnel.{ml,byte,native}>: package(tls), package(x509), package(nocrypto), \
+  package(lwt), package(cmdliner), package(sexplib), \
+  package(lwt.unix), package(tls.lwt)

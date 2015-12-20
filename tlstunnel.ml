@@ -1,11 +1,10 @@
 
-open Lwt
-open Lwt_unix
+open Lwt.Infix
 
 module Log = struct
   let inet_to_string = function
-    | ADDR_INET (x, p) -> Unix.string_of_inet_addr x ^ ":" ^ string_of_int p
-    | ADDR_UNIX s -> s
+    | Lwt_unix.ADDR_INET (x, p) -> Unix.string_of_inet_addr x ^ ":" ^ string_of_int p
+    | Lwt_unix.ADDR_UNIX s -> s
 
   let log_raw out event =
     match out with
@@ -54,13 +53,13 @@ module Fd_logger = struct
     count := succ !count
 
   let aborted_to_string ab =
-    match state ab with
+    match Lwt_unix.state ab with
       | Aborted exn -> Printexc.to_string exn
       | _ -> ""
 
   let log () =
     let opened, closed, aborted =
-      List.fold_left (fun (o, c, a) x -> match state x with
+      List.fold_left (fun (o, c, a) x -> match Lwt_unix.state x with
           | Opened -> (x :: o, c, a)
           | Closed -> (o, x :: c, a)
           | Aborted _ -> (o, c, x :: a))
@@ -84,6 +83,7 @@ let server_config cert priv_key =
 
 let init_socket log_raw frontend =
   Unix.handle_unix_error (fun () ->
+      let open Lwt_unix in
       let s = socket PF_INET SOCK_STREAM 0 in
       setsockopt s SO_REUSEADDR true ;
       bind s frontend ;
@@ -116,7 +116,7 @@ let rec read_write debug log closing close cnt ic oc =
           Stop
         end
     in
-    catch doit
+    Lwt.catch doit
       (function
         | Unix.Unix_error (Unix.EBADF, _, _) ->
            (if debug then log "EBADF, closing") ;
@@ -126,7 +126,7 @@ let rec read_write debug log closing close cnt ic oc =
           close () >|= fun () ->
           Stop)
     >>= function
-    | Stop -> return_unit
+    | Stop -> Lwt.return_unit
     | Continue -> read_write debug log closing close cnt ic oc
 
 let tls_info t =
@@ -143,27 +143,27 @@ let tls_info t =
 let safe_close closing tls fd () =
   closing := true ;
   let safely f x =
-    try_lwt (f x) with _ -> return_unit
+    Lwt.catch (fun _ -> f x) (fun _ -> Lwt.return_unit)
   in
   (match tls with
    | Some x -> safely Tls_lwt.Unix.close x
-   | None -> return_unit) >>= fun () ->
+   | None -> Lwt.return_unit) >>= fun () ->
   safely Lwt_unix.close fd
 
 let worker config backend log s logfds debug trace () =
   let closing = ref false in
-  catch (fun () ->
+  Lwt.catch (fun () ->
     Tls_lwt.Unix.server_of_fd config ?trace s >>= fun t ->
     let ic, oc = Tls_lwt.of_t t in
     log ("connection established (" ^ (tls_info t) ^ ")") ;
     let stats = Stats.new_stats () in
 
-    let fd = socket PF_INET SOCK_STREAM 0 in
+    let fd = Lwt_unix.socket PF_INET SOCK_STREAM 0 in
     if logfds then Fd_logger.add_fd fd ;
     let close = safe_close closing (Some t) fd in
 
-    catch (fun () ->
-      connect fd backend >>= fun () ->
+    Lwt.catch (fun () ->
+      Lwt_unix.connect fd backend >>= fun () ->
       let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
       and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
       in
@@ -199,8 +199,8 @@ let init out =
 
 let accept_loop s log_raw log_conn tls_config backend logfds debug trace =
   let rec loop () =
-    catch (fun () ->
-      accept s >>= fun (client_socket, addr) ->
+    Lwt.catch (fun () ->
+      Lwt_unix.accept s >>= fun (client_socket, addr) ->
       (* log_conn addr "accepted incoming connection" ; *)
       if logfds then Fd_logger.add_fd client_socket ;
       Lwt.async (worker tls_config backend (log_conn addr) client_socket logfds debug trace) ;
@@ -222,8 +222,8 @@ let serve (fip, fport) (bip, bport) certificate privkey logfd logfds debug =
     | None -> None
   in
   init logchan ;
-  let frontend = ADDR_INET (fip, fport)
-  and backend = ADDR_INET (bip, bport)
+  let frontend = Lwt_unix.ADDR_INET (fip, fport)
+  and backend = Lwt_unix.ADDR_INET (bip, bport)
   in
   server_config certificate privkey >>= fun tls_config ->
   let server_socket = init_socket (Log.log_initial logchan backend) frontend in

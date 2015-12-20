@@ -8,11 +8,13 @@ maintainer:   ["Hannes Mehnert <hannes@mehnert.org>"]
 license:      "BSD2"
 
 build: [
-  ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
-  ["ocaml" "setup.ml" "-build"]
+  [ "ocaml" "pkg/build.ml" "native=%{ocaml-native}%"
+                           "native-dynlink=%{ocaml-native-dynlink}%" ]
+  ["sh" "-c" "if test -f ./tlstunnel.native; then ./tlstunnel.native --help > _build/tlstunnel.1; else ./tlstunnel.byte --help > _build/tlstunnel.1; fi"]
 ]
 depends: [
   "ocamlfind" {build}
+  "ocamlbuild" {build}
   "tls" {>= "0.6.0"}
   "x509" {>= "0.3.0"}
   "nocrypto" {>= "0.4.0"}

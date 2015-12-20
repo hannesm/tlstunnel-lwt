@@ -1,7 +1,0 @@
-bin: [
-  "?_build/src/tlstunnel.byte" {"tlstunnel"}
-  "?_build/src/tlstunnel.native" {"tlstunnel"}
-]
-man: [
-  "_build/src/tlstunnel.1" {"tlstunnel.1"}
-]
