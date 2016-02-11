@@ -1,4 +1,4 @@
-master
+0.1.2 (2016-02-11):
 * HAProxy protocol support (version 1, via --haproxy1 flag), #22 contributed by @cfcs
 
 0.1.1 (2015-07-02):
