@@ -4,4 +4,4 @@ true : warn(+A-4-6-7-9-40-42-44-48)
 
 <tlstunnel.{ml,byte,native}>: package(tls), package(x509), package(nocrypto), \
   package(lwt), package(cmdliner), package(sexplib), \
-  package(lwt.unix), package(tls.lwt)
+  package(lwt.unix), package(tls.lwt), package(wildcard)
