@@ -166,7 +166,7 @@ let tls_info t =
     | `Ok data -> (data.Tls.Core.protocol_version, data.Tls.Core.ciphersuite)
     | `Error -> assert false
   in
-  let version = Tls.Printer.tls_version_to_string v
+  let version = Sexplib.Sexp.to_string_hum (Tls.Core.sexp_of_tls_version v)
   and cipher = Sexplib.Sexp.to_string_hum (Tls.Ciphersuite.sexp_of_ciphersuite c)
   in
   version ^ ", " ^ cipher
