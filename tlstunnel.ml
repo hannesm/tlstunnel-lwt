@@ -375,7 +375,7 @@ let cmd =
     `P "$(b,stunnel)(1), $(b,stud)(1)" ]
   in
   Term.(pure run_server $ frontend $ backend $ certificate $ privkey $ haproxy1 $ log $ quiet $ logfds $ debug),
-  Term.info "tlstunnel" ~version:"0.1.0" ~doc ~man
+  Term.info "tlstunnel" ~version:"0.1.3" ~doc ~man
 
 let () =
   match Term.eval cmd
