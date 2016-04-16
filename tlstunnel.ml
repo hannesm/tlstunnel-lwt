@@ -340,11 +340,11 @@ let frontend =
          ~doc:"The hostname and port to listen on for incoming connections (default is [*]:4433")
 
 let certificate =
-  Arg.(value & opt (some string) None & info ["cert"] ~docv:"FILE"
+  Arg.(value & opt (some file) None & info ["cert"] ~docv:"FILE"
          ~doc:"The full path to PEM encoded certificate chain FILE (may also include the private key)")
 
 let privkey =
-  Arg.(value & opt (some string) None & info ["key"] ~docv:"FILE"
+  Arg.(value & opt (some file) None & info ["key"] ~docv:"FILE"
          ~doc:"The full path to PEM encoded unencrypted private key in FILE (defaults to certificate_chain)")
 
 let haproxy1 =
@@ -375,7 +375,7 @@ let cmd =
     `P "$(b,stunnel)(1), $(b,stud)(1)" ]
   in
   Term.(pure run_server $ frontend $ backend $ certificate $ privkey $ haproxy1 $ log $ quiet $ logfds $ debug),
-  Term.info "tlstunnel" ~version:"0.1.3" ~doc ~man
+  Term.info "tlstunnel" ~version:"0.1.4" ~doc ~man
 
 let () =
   match Term.eval cmd
