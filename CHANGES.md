@@ -1,3 +1,6 @@
+0.1.4
+* Better error message when `--cert` or `--key` files do not exist
+
 0.1.3 (2016-03-22):
 * tls-0.7.1 compatibility (do not depend on Tls.Printer)
 
