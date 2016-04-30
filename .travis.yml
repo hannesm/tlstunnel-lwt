@@ -1,10 +1,15 @@
 language: c
-install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/master/.travis-opam.sh
+install: wget https://raw.githubusercontent.com/ocaml/ocaml-ci-scripts/master/.travis-opam.sh
 script: bash -ex .travis-opam.sh
 sudo: required
 env:
-  - PACKAGE="tlstunnel" OCAML_VERSION=4.01 POST_INSTALL_HOOK="./.travis-test.sh"
-  - PACKAGE="tlstunnel" OCAML_VERSION=4.02 POST_INSTALL_HOOK="./.travis-test.sh"
-  - PACKAGE="tlstunnel" OCAML_VERSION=4.03 POST_INSTALL_HOOK="./.travis-test.sh"
+  global:
+    - TESTS=false
+    - PACKAGE="tlstunnel"
+    - POST_INSTALL_HOOK="./.travis-test.sh"
+  matrix:
+    - OCAML_VERSION=4.01
+    - OCAML_VERSION=4.02
+    - OCAML_VERSION=4.03
 notifications:
   email: false
