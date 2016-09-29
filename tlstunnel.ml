@@ -54,15 +54,15 @@ module Fd_logger = struct
 
   let aborted_to_string ab =
     match Lwt_unix.state ab with
-      | Aborted exn -> Printexc.to_string exn
+      | Lwt_unix.Aborted exn -> Printexc.to_string exn
       | _ -> ""
 
   let log () =
     let opened, closed, aborted =
       List.fold_left (fun (o, c, a) x -> match Lwt_unix.state x with
-          | Opened -> (x :: o, c, a)
-          | Closed -> (o, x :: c, a)
-          | Aborted _ -> (o, c, x :: a))
+          | Lwt_unix.Opened -> (x :: o, c, a)
+          | Lwt_unix.Closed -> (o, x :: c, a)
+          | Lwt_unix.Aborted _ -> (o, c, x :: a))
         ([], [], []) !fds
     in
     fds := List.append opened aborted ;
@@ -92,9 +92,9 @@ module Haproxy1 = struct
     let peer_sockaddr = Lwt_unix.getpeername socket in
     let protocol_string =
       begin match Unix.domain_of_sockaddr own_sockaddr with
-      | PF_UNIX  -> failwith "TODO unix socket log and drop"
-      | PF_INET  -> "TCP4"
-      | PF_INET6 -> "TCP6"
+      | Unix.PF_UNIX  -> failwith "TODO unix socket log and drop"
+      | Unix.PF_INET  -> "TCP4"
+      | Unix.PF_INET6 -> "TCP6"
       end in
     let get_addr_port = function
       | Lwt_unix.ADDR_INET (inet_addr , port)
@@ -136,9 +136,11 @@ let rec read_write debug log closing close cnt ic oc =
       cnt l ;
       if l > 0 then
         let s = Bytes.sub buf 0 l in
-        (if debug then log ("read " ^ string_of_int l ^ " bytes: " ^ s)) ;
-        Lwt_io.write oc s >|= fun () ->
-        (if debug then log "wrote them") ;
+        (if debug then
+           log (String.concat " " ["read"; string_of_int l; "bytes:"; Bytes.to_string s])) ;
+        Lwt_io.write_from oc s 0 l
+        >|= fun n ->
+        (if debug then log (Printf.sprintf "wrote %d bytes" n)) ;
         Continue
       else
         begin
@@ -189,7 +191,7 @@ let worker config backend log s haproxy1 logfds debug trace () =
     log ("connection established (" ^ (tls_info t) ^ ")") ;
     let stats = Stats.new_stats () in
 
-    let fd = Lwt_unix.socket PF_INET SOCK_STREAM 0 in
+    let fd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
     if logfds then Fd_logger.add_fd fd ;
     let close = safe_close closing (Some t) fd in
 
@@ -298,8 +300,8 @@ open Cmdliner
 
 let resolve name =
   let he = Unix.gethostbyname name in
-  if Array.length he.h_addr_list > 0 then
-    he.h_addr_list.(0)
+  if Array.length he.Unix.h_addr_list > 0 then
+    he.Unix.h_addr_list.(0)
   else
     let msg = "no address for " ^ name in
     invalid_arg msg

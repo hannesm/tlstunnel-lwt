@@ -1,0 +1,3 @@
+description = "A TLS proxy using OCaml-TLS"
+version = "%%VERSION_NUM%%"
+requires = "tls x509 nocrypto lwt sexplib cmdliner"
