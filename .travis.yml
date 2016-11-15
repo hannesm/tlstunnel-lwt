@@ -8,8 +8,8 @@ env:
     - PACKAGE="tlstunnel"
     - POST_INSTALL_HOOK="./.travis-test.sh"
   matrix:
-    - OCAML_VERSION=4.01
     - OCAML_VERSION=4.02
     - OCAML_VERSION=4.03
+    - OCAML_VERSION=4.04
 notifications:
   email: false
