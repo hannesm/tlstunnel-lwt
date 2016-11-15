@@ -1,1 +1,3 @@
+B _build/**
+
 PKG tls x509 nocrypto lwt cmdliner sexplib lwt.unix tls.lwt
