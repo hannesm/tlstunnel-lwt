@@ -117,7 +117,7 @@ let init_socket log_raw frontend =
       let open Lwt_unix in
       let s = socket PF_INET SOCK_STREAM 0 in
       setsockopt s SO_REUSEADDR true ;
-      bind s frontend ;
+      Versioned.bind_2 s frontend >|= fun () ->
       listen s 10 ;
       log_raw "listener started on " frontend ;
       s) ()
@@ -265,7 +265,7 @@ let serve (fip, fport) (bip, bport) certificate privkey haproxy1 logfd logfds de
   and backend = Lwt_unix.ADDR_INET (bip, bport)
   in
   server_config certificate privkey >>= fun tls_config ->
-  let server_socket = init_socket (Log.log_initial logchan backend) frontend in
+  init_socket (Log.log_initial logchan backend) frontend >>= fun server_socket ->
   let raw_log = Log.log_raw logchan in
   if logfds then ignore (Fd_logger.start raw_log ()) ;
   let trace =
