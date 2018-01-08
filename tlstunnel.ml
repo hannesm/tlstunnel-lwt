@@ -108,9 +108,10 @@ module Haproxy1 = struct
     header ^ "\r\n"
 end
 
-let server_config cert priv_key =
+let server_config auth cert priv_key =
   X509_lwt.private_of_pems ~cert ~priv_key >|= fun cert ->
-  Tls.Config.server ~certificates:(`Single cert) ()
+  let reneg = match auth with None -> false | Some _ -> true in
+  Tls.Config.server ~reneg ~certificates:(`Single cert) ()
 
 let init_socket log_raw frontend =
   Unix.handle_unix_error (fun () ->
@@ -163,15 +164,22 @@ let rec read_write debug log closing close cnt ic oc =
     | Continue -> read_write debug log closing close cnt ic oc
 
 let tls_info t =
-  let v, c =
+  let v, c, cert =
     match Tls_lwt.Unix.epoch t with
-    | `Ok data -> (data.Tls.Core.protocol_version, data.Tls.Core.ciphersuite)
+    | `Ok data -> (data.Tls.Core.protocol_version, data.Tls.Core.ciphersuite, data.Tls.Core.peer_certificate)
     | `Error -> assert false
   in
   let version = Sexplib.Sexp.to_string_hum (Tls.Core.sexp_of_tls_version v)
   and cipher = Sexplib.Sexp.to_string_hum (Tls.Ciphersuite.sexp_of_ciphersuite c)
+  and cert = match cert with
+    | None -> ""
+    | Some x ->
+      let serial = Z.to_string (X509.serial x)
+      and subject = X509.distinguished_name_to_string (X509.subject x)
+      in
+      ", authenticated using " ^ subject ^ " (serial: " ^ serial ^ ")"
   in
-  version ^ ", " ^ cipher
+  version ^ ", " ^ cipher ^ cert
 
 let safe_close closing tls fd () =
   closing := true ;
@@ -183,12 +191,20 @@ let safe_close closing tls fd () =
    | None -> Lwt.return_unit) >>= fun () ->
   safely Lwt_unix.close fd
 
-let worker config backend log s haproxy1 logfds debug trace () =
+let worker config auth backend log s haproxy1 logfds debug trace () =
   let closing = ref false in
   Lwt.catch (fun () ->
     Tls_lwt.Unix.server_of_fd config ?trace s >>= fun t ->
-    let ic, oc = Tls_lwt.of_t t in
     log ("connection established (" ^ (tls_info t) ^ ")") ;
+    (match auth with
+     | None -> Lwt.return_unit
+     | Some cas ->
+       let acceptable_cas = List.map X509.subject cas in
+       let time = Ptime_clock.now () in
+       let authenticator = X509.Authenticator.chain_of_trust ~time cas in
+       Tls_lwt.Unix.reneg ~authenticator ~acceptable_cas t >|= fun () ->
+        log ("connection renegotiated (" ^ (tls_info t) ^ ")")) >>= fun () ->
+    let ic, oc = Tls_lwt.of_t t in
     let stats = Stats.new_stats () in
 
     let fd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
@@ -236,13 +252,13 @@ let init out =
   Lwt.async_exception_hook := (fun exn ->
       Printf.fprintf out "async error %s\n%!" (Printexc.to_string exn))
 
-let accept_loop s log_raw log_conn tls_config backend haproxy1 logfds debug trace =
+let accept_loop s log_raw log_conn tls_config auth backend haproxy1 logfds debug trace =
   let rec loop () =
     Lwt.catch (fun () ->
       Lwt_unix.accept s >>= fun (client_socket, addr) ->
       (* log_conn addr "accepted incoming connection" ; *)
       if logfds then Fd_logger.add_fd client_socket ;
-      Lwt.async (worker tls_config backend (log_conn addr) client_socket haproxy1 logfds debug trace) ;
+      Lwt.async (worker tls_config auth backend (log_conn addr) client_socket haproxy1 logfds debug trace) ;
       loop ())
       (function
         | Unix.Unix_error (e, f, _) ->
@@ -255,7 +271,7 @@ let accept_loop s log_raw log_conn tls_config backend haproxy1 logfds debug trac
   in
   loop ()
 
-let serve (fip, fport) (bip, bport) certificate privkey haproxy1 logfd logfds debug =
+let serve (fip, fport) (bip, bport) certificate privkey auth haproxy1 logfd logfds debug =
   let logchan = match logfd with
     | Some fd -> Some (Unix.out_channel_of_descr fd)
     | None -> None
@@ -264,7 +280,10 @@ let serve (fip, fport) (bip, bport) certificate privkey haproxy1 logfd logfds de
   let frontend = Lwt_unix.ADDR_INET (fip, fport)
   and backend = Lwt_unix.ADDR_INET (bip, bport)
   in
-  server_config certificate privkey >>= fun tls_config ->
+  server_config auth certificate privkey >>= fun tls_config ->
+  (match auth with
+   | None -> Lwt.return None
+   | Some f -> X509_lwt.certs_of_pem f >|= fun a -> Some a) >>= fun auth ->
   init_socket (Log.log_initial logchan backend) frontend >>= fun server_socket ->
   let raw_log = Log.log_raw logchan in
   if logfds then ignore (Fd_logger.start raw_log ()) ;
@@ -279,9 +298,9 @@ let serve (fip, fport) (bip, bport) certificate privkey haproxy1 logfd logfds de
       None
   in
   (* drop privileges here! *)
-  accept_loop server_socket raw_log (Log.log logchan) tls_config backend haproxy1 logfds debug trace
+  accept_loop server_socket raw_log (Log.log logchan) tls_config auth backend haproxy1 logfds debug trace
 
-let run_server frontend backend certificate privkey haproxy1 log quiet logfds debug =
+let run_server frontend backend certificate privkey auth haproxy1 log quiet logfds debug =
   Sys.(set_signal sigpipe Signal_ignore) ;
   let logfd = match quiet, log with
     | true, None -> None
@@ -294,7 +313,7 @@ let run_server frontend backend certificate privkey haproxy1 log quiet logfds de
     | Some c, None -> (c, c)
     | None, _ -> invalid_arg "missing certificate file"
   in
-  Lwt_main.run (serve frontend backend c p haproxy1 logfd logfds debug)
+  Lwt_main.run (serve frontend backend c p auth haproxy1 logfd logfds debug)
 
 open Cmdliner
 
@@ -352,6 +371,10 @@ let privkey =
 let haproxy1 =
   Arg.(value & flag & info ["haproxy1"] ~doc:"Forward protocol, IP, and port numbers to the destination using HA PROXY protocol v1 (for use with nginx, Varnish, etc - see http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt)")
 
+let auth =
+  Arg.(value & opt (some file) None & info ["auth"] ~docv:"FILE"
+         ~doc:"The full path to PEM encoded CA certificate FILE used for client authentication")
+
 let log =
   Arg.(value & opt (some string) None & info ["l"; "logfile"] ~docv:"FILE"
          ~doc:"Write accesses to FILE (by default, logging is done to standard output).")
@@ -376,7 +399,7 @@ let cmd =
     `S "SEE ALSO" ;
     `P "$(b,stunnel)(1), $(b,stud)(1)" ]
   in
-  Term.(pure run_server $ frontend $ backend $ certificate $ privkey $ haproxy1 $ log $ quiet $ logfds $ debug),
+  Term.(pure run_server $ frontend $ backend $ certificate $ privkey $ auth $ haproxy1 $ log $ quiet $ logfds $ debug),
   Term.info "tlstunnel" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
