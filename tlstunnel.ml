@@ -118,7 +118,7 @@ let init_socket log_raw frontend =
       let open Lwt_unix in
       let s = socket PF_INET SOCK_STREAM 0 in
       setsockopt s SO_REUSEADDR true ;
-      Versioned.bind_2 s frontend >|= fun () ->
+      bind s frontend >|= fun () ->
       listen s 10 ;
       log_raw "listener started on " frontend ;
       s) ()
