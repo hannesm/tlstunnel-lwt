@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/hannesm/tlstunnel.svg?branch=master)](https://travis-ci.org/hannesm/tlstunnel)
+## TLS tunnel -- a TLS reverse proxy
 
 Who needs a stunnel if you have a tls tunnel?
 
@@ -9,8 +9,10 @@ Who needs a stunnel if you have a tls tunnel?
 
 ## Installation
 
-You first need [OCaml](https://ocaml.org) (at least 4.1.0) and
-[OPAM](https://opam.ocaml.org) (1.2.*) from your distribution.
+[![Build Status](https://travis-ci.org/hannesm/tlstunnel.svg?branch=master)](https://travis-ci.org/hannesm/tlstunnel)
+
+You first need [OCaml](https://ocaml.org) (at least 4.02.0) and
+[OPAM](https://opam.ocaml.org) (at least 1.2.2) from your distribution.
 
 Run `opam install tlstunnel` after `opam init` finished.
 
