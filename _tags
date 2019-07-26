@@ -1,4 +1,4 @@
 true : color(always), bin_annot, principal, safe_string
 true : warn(+A-4-44)
 
-<tlstunnel.{ml,byte,native}>: package(tls x509 nocrypto lwt cmdliner sexplib lwt.unix tls.lwt)
+<tlstunnel.{ml,byte,native}>: package(tls x509 nocrypto fmt lwt cmdliner sexplib lwt.unix tls.lwt)

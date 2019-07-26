@@ -174,8 +174,9 @@ let tls_info t =
   and cert = match cert with
     | None -> ""
     | Some x ->
-      let serial = Z.to_string (X509.serial x)
-      and subject = X509.distinguished_name_to_string (X509.subject x)
+      let serial = Z.to_string (X509.Certificate.serial x)
+      and subject =
+        Fmt.to_to_string X509.Distinguished_name.pp (X509.Certificate.subject x)
       in
       ", authenticated using " ^ subject ^ " (serial: " ^ serial ^ ")"
   in
@@ -199,7 +200,7 @@ let worker config auth backend log s haproxy1 logfds debug trace () =
     (match auth with
      | None -> Lwt.return_unit
      | Some cas ->
-       let acceptable_cas = List.map X509.subject cas in
+       let acceptable_cas = List.map X509.Certificate.subject cas in
        let time = Ptime_clock.now () in
        let authenticator = X509.Authenticator.chain_of_trust ~time cas in
        Tls_lwt.Unix.reneg ~authenticator ~acceptable_cas t >|= fun () ->
