@@ -7,6 +7,8 @@ Who needs a stunnel if you have a tls tunnel?
 - which speak SSL version 3
 - if the given certificate chain is not valid (or contains an X.509 version 1 certificate, or less than 1024 bits RSA public key
 
+Deprecated in favour of the [MirageOS unikernel](https://github.com/roburio/tlstunnel).
+
 ## Installation
 
 [![Build Status](https://travis-ci.org/hannesm/tlstunnel.svg?branch=master)](https://travis-ci.org/hannesm/tlstunnel)
