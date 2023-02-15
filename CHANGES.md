@@ -1,3 +1,6 @@
+## 0.2.1 (2023-02-15)
+* tls.lwt is now tls-lwt
+
 ## 0.2.0 (2018-04-08)
 * client authentication support
 * fix warnings
