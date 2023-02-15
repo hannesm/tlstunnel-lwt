@@ -10,7 +10,7 @@ depends: [
   "ocamlfind" {build}
   "ocamlbuild" {build}
   "topkg" {build}
-  "tls" {>= "0.9.0"}
+  "tls-lwt" {>= "0.16.0"}
   "x509" {>= "0.7.0"}
   "nocrypto" {>= "0.4.0"}
   "lwt" {>= "3.0.0"}
